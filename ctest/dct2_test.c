@@ -12,42 +12,9 @@
 
 //#include "lenna.txt"
 #include "lenna2.txt"
-// workaround for libm_nano.a
-int __errno;
 
-/*
-char* heap_end = (char*)0x02000000;
-//void _sbrk_r(void) {}
-char* _sbrk(int incr) {
- char* heap_low = (char*)0x02000000;
- char* heap_top = (char*)0x03000000;
- char *prev_heap_end;
+#include "add_for_cmpl_all.c"
 
- if (heap_end == 0) {
-  heap_end = heap_low;
- }
- prev_heap_end = heap_end;
-
- if (heap_end + incr > heap_top) {
-  return (char *)0;
- }
-
- heap_end += incr;
- return (char*) prev_heap_end;
-}
-// workaround for using libc_nano.a
-void _close(void) {}
-void _lseek(void) {}
-void _read(void) {}
-void _write(void) {}
-//void _sbrk_r(void) {}
-void abort(void) {}
-void _kill_r(void) {}
-void _getpid_r(void) {}
-void _fstat_r(void) {}
-void _isatty_r(void) {}
-void _isatty(void) {}
-*/
 int print_coodinate(int x, int y, int type);
 int uchar2double(unsigned char* indata, double* outdata, int size);
 int double2uchar(double* indata, unsigned int* outdata, int size);
@@ -61,13 +28,6 @@ int dct(double* indata, double* outdata);
 int idct(double* indata, double* outdata, int using);
 int matrix_print( double* mat, int x, int y);
 //int matrix_print_dummy( double* mat, int x, int y);
-int double_print( char* cbuf, double value, int digit );
-int int_print( char* cbuf, int value, int type );
-void uprint( char* buf, int length, int ret );
-//void uprint_dummy( char* buf, int length, int ret );
-static void clearbss(void);
-void pass();
-void wait();
 
 static double dbg_data = 0.0;
 //static double dbg_data[2] = { 0.0, 0.0 };
@@ -132,9 +92,6 @@ int main() {
 			put_tile(cmat2, idct_data, S, x, y, T);
 		}
 	}
-
-	//uprint( "mat2", 4, 2 );
-	//for ( int i = 0; i < S*S; i++) {
 
 	pass();
 	return 0;
@@ -307,141 +264,5 @@ int matrix_print( double* mat, int x, int y) {
 		}
 	}
 	return 0;
-}
-
-int double_print( char* cbuf, double value, int digit ) {
-	// type 0 : digit  1:hex
-	unsigned char buf[64];
-
-	int cntr = 0;
-	
-	if (value < 0) {
-		buf[cntr++] = 0xfe; // for minus
-		value = -value;
-	}
-	double mug = 1.0;
-	while(value >= mug) {
-		mug *= 10.0;
-	}
-	if (mug == 1.0) {
-		buf[cntr++] = 0; // first zero
-		buf[cntr++] = 0xff; // for preiod
-	}
-	mug /= 10.0;
-	for(int i = 0; i < digit; i++) {	
-		unsigned char a =(unsigned char)(value / mug);
-		buf[cntr++] = a;
-		value = value - (double)a * mug;
-		if (mug == 1.0) {
-			buf[cntr++] = 0xff; // for preiod
-		}
-		mug /= 10.0;
-	}
-	if (mug >= 1.0) {
-		while(mug >= 1.0) {
-			unsigned char a =(unsigned char)(value / mug);
-			buf[cntr++] = a;
-			value = value - (double)a * mug;
-			mug /= 10.0;
-			if (cntr >= 64) {
-				break;
-			}
-		}
-	}
-	for(int i = 0; i < cntr; i++) {	
-		if (buf[i] == 0xff) {
-			cbuf[i] = 0x2e;
-		}
-		else if (buf[i] == 0xfe) {
-			cbuf[i] = 0x2d;
-		}
-		else {
-			cbuf[i] = buf[i] + 0x30;
-		}
-	}	
-	return cntr;	
-}
-
-//void uprint_dummy( char* buf, int length, int ret ) {
-void uprint( char* buf, int length, int ret ) {
-    unsigned int* led = (unsigned int*)0xc000fe00;
-    unsigned int* uart_out = (unsigned int*)0xc000fc00;
-    unsigned int* uart_status = (unsigned int*)0xc000fc04;
-
-	//unsigned int flg = 1;
-	//while(flg == 1) {
-		//flg = *uart_status;
-	//}
-	//*uart_out = 0x41;
-
-	for (int i = 0; i < length + ret; i++) {
-		unsigned int flg = 1;
-		while(flg == 1) {
-			flg = *uart_status;
-		}
-        *uart_out = ((i == length+1)&&(ret == 2)) ? 0x0a :
-                    ((i == length)&&(ret == 1)) ? 0x20 :
-                    ((i == length)&&(ret == 2)) ? 0x0d : buf[i];
-		//*led = i;
-	}
-}
-
-void pass() {
-    unsigned int* led = (unsigned int*)0xc000fe00;
-    unsigned int val;
-    unsigned int timer,timer2;
-    val = 0;
-    while(1) {
-		wait();
-		val++;
-		*led = val & 0x7777;
-    }
-}
-
-void wait() {
-    unsigned int timer,timer2;
-    timer = 0;
-	timer2 = 0;
-    while(timer2 < LP2) {
-        while(timer < LP) {
-            timer++;
-    	}
-        timer2++;
-	}
-}
-
-int int_print( char* cbuf, int value, int type ) {
-	// type 0 : digit  1:hex
-	unsigned char buf[32];
-	int ofs = 0;
-	int cntr = 0;
-	if (value == 0) {
-		cbuf[0] = 0x30;
-		ofs = 1;
-	}
-	else if (type == 0) { // int
-		if (value < 0) {
-			cbuf[ofs++] = 0x2d;
-			value = -value;
-		}
-		while(value > 0) {
-			buf[cntr++] = (unsigned char)(value % 10);
-			value = value / 10;
-		}
-		for(int i = cntr - 1; i >= 0; i--) {	
-			cbuf[ofs++] = buf[i] + 0x30;
-		}	
-	}
-	else { //unsinged int
-		unsigned int uvalue = (unsigned int)value;
-		while(uvalue > 0) {
-			buf[cntr++] = (unsigned char)(uvalue % 10);
-			uvalue = uvalue / 10;
-		}
-		for(int i = cntr - 1; i >= 0; i--) {	
-			cbuf[ofs++] = buf[i] + 0x30;
-		}	
-	}
-	return ofs;	
 }
 
