@@ -1,4 +1,4 @@
-# tiny-riscv-rv32i
+# swc1
 
 tiny riscv core which is not pipelined CPU
 
