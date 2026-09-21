@@ -29,6 +29,14 @@ module fpga_top (
 	//output [3:0] gpio_o,
 	//output [3:0] gpio_en,
 
+	// sram port
+	//output sram_cen,
+	//output sram_gwen,
+	//output [7:0] sram_wen,
+	//output [9:0] sram_a,
+	//output [7:0] sram_d,
+	//input [7:0] sram_q,
+
 	input [1:0] init_latency,
 	input init_qspicmd,
 	input init_cpu_start,
@@ -73,6 +81,21 @@ wire write_w; // output
 wire write_hw; // output
 wire [31:0] write_adr; // output
 wire [31:0] write_data; // output
+
+// scratch RAM (mapped at 0x03000000 via qspi_if)
+wire [8:0] sc_ram_radr; // output
+wire [7:0] sc_ram_rdata; // input
+wire [8:0] sc_ram_wadr; // output
+wire [7:0] sc_ram_wdata; // output
+wire sc_ram_wen; // output
+
+// outside sram i/f
+//assign sram_ceb = 1'b0;
+//assign sram_gwen = ~sc_ram_wen;
+//assign sram_wen = 8'd0;
+//assign sram_a = sc_ram_wadr; // same as sc_ram_radr
+//assign sram_d = sc_ram_wdata;
+//assign sc_ram_rdata = sram_q; // input
 
 // uart
 wire u_read_req; // input
@@ -335,6 +358,11 @@ qspi_if qspi_if (
 	.write_finish(write_finish),
 	.write_adr(write_adr),
 	.write_data(write_data),
+	.sc_ram_radr(sc_ram_radr),
+	.sc_ram_rdata(sc_ram_rdata),
+	.sc_ram_wadr(sc_ram_wadr),
+	.sc_ram_wdata(sc_ram_wdata),
+	.sc_ram_wen(sc_ram_wen),
 	.dma_io_we(dma_io_we),
 	.dma_io_wadr(dma_io_wadr),
 	.dma_io_wdata(dma_io_wdata),
@@ -342,6 +370,15 @@ qspi_if qspi_if (
 	.dma_io_radr_en(dma_io_radr_en),
 	.dma_io_rdata_in(dma_io_rdata_in_4),
 	.dma_io_rdata(dma_io_rdata_in_5)
+	);
+
+scratch_1r1w scratch_1r1w (
+	.clk(clk),
+	.ram_radr(sc_ram_radr),
+	.ram_rdata(sc_ram_rdata),
+	.ram_wadr(sc_ram_wadr),
+	.ram_wdata(sc_ram_wdata),
+	.ram_wen(sc_ram_wen)
 	);
 
 io_led io_led (
