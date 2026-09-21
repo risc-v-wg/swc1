@@ -75,17 +75,21 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 // miso signals
+wire miso_fifo_empty;
+reg miso_fifo_empty_lat;
 reg [3:0] re_spi_value_dly;
 
-wire miso_fifo_re = re_spi_value_dly[3];
+wire miso_fifo_re = re_spi_value_dly[3] & ~miso_fifo_empty_lat;
 wire miso_reset_fifo = we_spi_miso & dma_io_wdata[10]; // need to add
 wire [7:0] miso_fifo_out;
 wire miso_fifo_full;
-wire miso_fifo_empty;
+reg miso_fifo_full_lat;
 
 // mosi signals
-wire mosi_fifo_full;
 wire mosi_fifo_empty;
+wire mosi_fifo_full;
+reg mosi_fifo_empty_lat;
+reg mosi_fifo_full_lat;
 
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
@@ -98,8 +102,8 @@ assign dma_io_rdata = (re_spi_value_dly[0] == 1'b1) ? { 5'd0, spi_mode[12:10], 1
 
                       (re_spi_value_dly[1] == 1'b1) ? { 22'd0, spi_sck_div } :
 
-                      (re_spi_value_dly[2] == 1'b1) ? { 22'd0, mosi_fifo_empty, mosi_fifo_full, 8'd0 } :
-                      (re_spi_value_dly[3] == 1'b1) ? { 22'd0, miso_fifo_empty, miso_fifo_full, miso_fifo_out } : dma_io_rdata_in;
+                      (re_spi_value_dly[2] == 1'b1) ? { 22'd0, mosi_fifo_empty_lat, mosi_fifo_full_lat, 8'd0 } :
+                      (re_spi_value_dly[3] == 1'b1) ? { 21'd0, ~miso_fifo_re, miso_fifo_empty_lat, miso_fifo_full_lat, miso_fifo_out } : dma_io_rdata_in;
 
 // logics
 // sck divide counter
@@ -130,19 +134,30 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 reg org_sck_dly;
+reg org_sck_dly2;
 
 always @ (posedge clk or negedge rst_n) begin
-    if (~rst_n)
+    if (~rst_n) begin
         org_sck_dly <= 1'b0 ;
-	else
+        org_sck_dly2 <= 1'b0 ;
+	end
+	else begin
         org_sck_dly <= org_sck ;
+        org_sck_dly2 <= org_sck_dly ;
+	end
 end
 
 // working points
-wire sck_rise_edge =  org_sck & ~org_sck_dly;
-wire sck_fall_edge = ~org_sck &  org_sck_dly;
+wire sck_rise_edge_early =  org_sck & ~org_sck_dly;
+wire sck_fall_edge_early = ~org_sck &  org_sck_dly;
 
-wire sck_read_lat_timing = spi_mode_cpha ? sck_fall_edge : sck_rise_edge;
+wire sck_rise_edge =  org_sck_dly & ~org_sck_dly2;
+wire sck_fall_edge = ~org_sck_dly &  org_sck_dly2;
+
+wire sck_read_lat_timing_early  = spi_mode_cpha ? sck_fall_edge_early : sck_rise_edge_early;
+wire sck_write_lat_timing_early = spi_mode_cpha ? sck_rise_edge_early : sck_fall_edge_early;
+
+wire sck_read_lat_timing  = spi_mode_cpha ? sck_fall_edge : sck_rise_edge;
 wire sck_write_lat_timing = spi_mode_cpha ? sck_rise_edge : sck_fall_edge;
 
 // sck maker
@@ -189,12 +204,14 @@ sfifo_withr mosi_fifo (
 	.rnext(mosi_fifo_re),
 	.rqempty(dummy_mosi_empty),
 	.rdata(mosi_fifo_out),
-	.q_reset(1'b0)
+	.q_reset(miso_reset_fifo)
+	//.q_reset(1'b0)
 	);
 
 // mosi fifo push/pull counter
 reg [3:0] mosi_pp_cntr;
 wire mosi_next_byte;
+//wire mosi_next_byte_pre;
 
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
@@ -208,15 +225,27 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 assign mosi_fifo_empty = (mosi_pp_cntr == 4'd0);
-assign mosi_fifo_full = (mosi_pp_cntr == 4'd8);
+assign mosi_fifo_full = (mosi_pp_cntr > 4'd7);
 
-wire mosi_fifo_next_empty = (mosi_pp_cntr == 4'd1) & mosi_next_byte;
+//wire mosi_fifo_next_empty = (mosi_pp_cntr < 4'd2) & mosi_next_byte;
+wire mosi_fifo_next_empty = (mosi_pp_cntr < 4'd2);
 
+always @ (posedge clk or negedge rst_n) begin
+    if (~rst_n) begin
+		mosi_fifo_empty_lat <= 1'b0;
+		mosi_fifo_full_lat <= 1'b0;
+	end
+	else begin
+		mosi_fifo_empty_lat <= mosi_fifo_empty;
+		mosi_fifo_full_lat <= mosi_fifo_full;
+	end
+end
 
 // bit select counter
 
 reg [2:0] bit_sel_org;
 wire data_phase;
+reg data_phase_read;
 
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
@@ -227,14 +256,28 @@ always @ (posedge clk or negedge rst_n) begin
         bit_sel_org <= bit_sel_org + 3'd1 ;
 end
 
+//reg mosi_fifo_last_cycle;
+
 wire [2:0] dat_bit_sel = (spi_mode_bit_endian) ? ~bit_sel_org : bit_sel_org;
 
 assign mosi_next_byte = (bit_sel_org == 3'd7);
+//assign mosi_next_byte_pre = (bit_sel_org == 3'd6);
 
 wire mosi_fifo_next = mosi_next_byte & ~mosi_fifo_next_empty;
-wire mosi_fifo_end  = mosi_next_byte &  mosi_fifo_next_empty;
+wire mosi_fifo_last = mosi_next_byte &  mosi_fifo_next_empty;
+//wire mosi_fifo_end  = mosi_next_byte & mosi_fifo_empty & mosi_fifo_last_cycle;
 
-assign mosi_fifo_re = (mosi_fifo_next | mosi_fifo_end) & sck_write_lat_timing;
+//always @ (posedge clk or negedge rst_n) begin
+    //if (~rst_n)
+        //mosi_fifo_last_cycle <= 1'b0 ;
+	//else if (mosi_fifo_end)
+        //mosi_fifo_last_cycle <= 1'b0 ;
+	//else if (mosi_fifo_last)
+        //mosi_fifo_last_cycle <= 1'b1 ;
+//end
+
+//assign mosi_fifo_re = (mosi_fifo_next | mosi_fifo_last) & sck_write_lat_timing;
+assign mosi_fifo_re = mosi_next_byte & sck_write_lat_timing;
 
 // data bit selector
 wire data_bit = mosi_fifo_out[dat_bit_sel];
@@ -242,6 +285,7 @@ wire data_bit = mosi_fifo_out[dat_bit_sel];
 // miso final selector
 wire mosi_en;
 
+//wire org_mosi = (data_bit & mosi_en) | ~mosi_en;
 wire org_mosi = data_bit & mosi_en;
 
 
@@ -303,7 +347,7 @@ reg [2:0] miso_bit_cntr;
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
         miso_bit_cntr <= 3'd0 ;
-	else if ( ~data_phase )
+	else if ( ~data_phase_read )
         miso_bit_cntr <= 3'd0 ;
 	else if ( sck_read_lat_timing )
         miso_bit_cntr <= miso_bit_cntr + 3'd1 ;
@@ -327,7 +371,7 @@ reg [7:0] miso_byte_org;
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
         miso_byte_org <= 8'd0 ;
-	else if ( ~data_phase )
+	else if ( ~data_phase_read )
         miso_byte_org <= 8'd0 ;
 	else if ( sck_read_lat_timing )
 		miso_byte_org <= { miso_byte_org[7:0], miso_sel };
@@ -359,6 +403,20 @@ sfifo_withr miso_fifo (
 	.q_reset(miso_reset_fifo)
 	);
 
+
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n) begin
+		miso_fifo_empty_lat <= 1'b0;
+		miso_fifo_full_lat <= 1'b0;
+	end
+	else begin
+		miso_fifo_empty_lat <= miso_fifo_empty;
+		miso_fifo_full_lat <= miso_fifo_full;
+	end
+end
+
+
 // state machine
 
 `define SPI_IDLE  3'b000
@@ -372,7 +430,8 @@ function [2:0] spi_machine;
 input [2:0] spi_state;
 input mosi_fifo_empty;
 input mosi_fifo_next;
-input mosi_fifo_end;
+input mosi_fifo_last;
+//input mosi_fifo_end;
 
 begin
 	case(spi_state)
@@ -380,8 +439,8 @@ begin
 		           else if (~mosi_fifo_empty ) spi_machine = `SPI_TRNSD;
                    else spi_machine = `SPI_IDLE;
 		`SPI_PREWT: spi_machine = `SPI_TRNSD;
-		`SPI_TRNSD:if ( mosi_fifo_next ) spi_machine = `SPI_TRNSD;
-                   else if ( mosi_fifo_end ) spi_machine = `SPI_WAIT;
+		`SPI_TRNSD:if ( mosi_fifo_last ) spi_machine = `SPI_WAIT;
+                   //else if ( mosi_fifo_end ) spi_machine = `SPI_WAIT;
                    else spi_machine = `SPI_TRNSD;
 		`SPI_WAIT: spi_machine = `SPI_IDLE;
 		default : spi_machine = `SPI_IDLE;
@@ -392,7 +451,8 @@ endfunction
 wire [2:0] next_spi_state = spi_machine( spi_state,
 										 mosi_fifo_empty,
 										 mosi_fifo_next,
-										 mosi_fifo_end);
+										 mosi_fifo_last);
+										 //mosi_fifo_end);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
@@ -405,8 +465,16 @@ end
 assign sck_en = (spi_state != `SPI_IDLE)&(spi_state != `SPI_WAIT)&~((next_spi_state == `SPI_WAIT)&sck_write_lat_timing);
 assign sck_finish =  (spi_state == `SPI_WAIT)|((next_spi_state == `SPI_WAIT)&sck_write_lat_timing);
 assign cs_all_status = (spi_state != `SPI_IDLE);
-assign data_phase = (spi_state == `SPI_TRNSD);
+assign data_phase = (spi_state == `SPI_TRNSD)|(spi_state == `SPI_WAIT);
 assign mosi_en = (spi_state == `SPI_PREWT)|(spi_state == `SPI_TRNSD);
+
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		data_phase_read <= 1'b0;
+	else if (sck_read_lat_timing_early)
+		data_phase_read <= data_phase;
+end
 
 
 endmodule
