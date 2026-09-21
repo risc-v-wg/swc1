@@ -47,7 +47,8 @@ module qspi_if (
 	
 `define TERM_SCK 10'd1
 `define CMD_DFREADQ 8'hEB
-`define CMD_FFREADQ 8'h6B
+//`define CMD_FFREADQ 8'h6B
+`define CMD_FFREADQ 8'hEB
 `define CMD_DQWIRTE 8'h38
 `define CMD_FQWIRTE 8'h38
 `define CMD_RST_EN 8'h66
@@ -454,12 +455,16 @@ assign wdata_slice = (wdata_ofs == 3'd1) ? ext_wdata[31:28] :
 
 assign write_data_end = state_write & (wdata_ofs == 3'b0) & fall_edge;
 
+// for Flash's mode bit term : for issi : need to check for winbond
+wire mode_bit_window = state_rdwt & (rwait_cntr >= read_latency - 4'd1);
+
 // final selector
 wire [3:0] sio_out_pre = (next_state_cmd | state_cmd) ? { 3'b000, cmd_bit } :
                          (state_adr) ? adr_slice :
-                         (state_write) ? wdata_slice : 4'd0;
+                         (state_write) ? wdata_slice :
+                         (mode_bit_window) ? 4'h0 : 4'd0;
 
-wire sio_out_enbl_pre = next_state_cmd | next_state_adr | state_adr | next_state_write;
+wire sio_out_enbl_pre = next_state_cmd | next_state_adr | state_adr | next_state_write | mode_bit_window;
 
 reg [3:0] sio_out_dly;
 reg sio_out_enbl_dly;
@@ -613,7 +618,7 @@ reg [7:0] dbg_2div;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
-		 dbg_2div <= 8'd0;
+		 dbg_2div <= 8'b0001111;
 	else if (we_qspi_sckdiv)
 		 dbg_2div <= dma_io_wdata[23:16];
 end
