@@ -72,10 +72,10 @@ module execution (
     output reg cmd_ld_ma,
     output reg cmd_st_ma,
     output reg wbk_rd_reg_ma,
-	output reg [4:0] rd_adr_ma,
-	output reg [31:0] rd_data_ma,
-	output reg [31:0] st_data_ma,
-	output reg [2:0] ldst_code_ma,
+	output [4:0] rd_adr_ma,
+	output [31:0] rd_data_ma,
+	output [31:0] st_data_ma,
+	output [2:0] ldst_code_ma,
     // to IF
 	output [31:2] jmp_adr_ex,
 	output jmp_condition_ex,
@@ -337,29 +337,29 @@ assign jmp_condition_ex = cmd_jal_ex | cmd_jalr_ex | cmd_br_ex &
 assign ecall_condition_ex = (( cmd_ecall_ex | cmd_ebreak_ex) & csr_rmie ) | illegal_ops_ex;
 
 // FF to DMRW
-//assign rd_adr_ma = rd_adr_ex;
-//assign rd_data_ma = rd_data_ex;
-//assign st_data_ma = st_data_ex;
-//assign ldst_code_ma = alu_code_ex;
+assign rd_adr_ma = rd_adr_ex;
+assign rd_data_ma = rd_data_ex;
+assign st_data_ma = st_data_ex;
+assign ldst_code_ma = alu_code_ex;
 
 always @ ( posedge clk or negedge rst_n) begin   
 	if (~rst_n) begin
         cmd_ld_ma <= 1'b0;
         cmd_st_ma <= 1'b0;
         wbk_rd_reg_ma <= 1'b0;
-		rd_adr_ma <= 5'd0;
-		rd_data_ma <= 32'd0;
-		st_data_ma <= 32'd0;
-		ldst_code_ma <= 3'd0;
+		//rd_adr_ma <= 5'd0;
+		//rd_data_ma <= 32'd0;
+		//st_data_ma <= 32'd0;
+		//ldst_code_ma <= 3'd0;
 	end
 	else begin
 	    cmd_ld_ma <= cmd_ld_ex & cpu_stat_ex;
         cmd_st_ma <= cmd_st_ex & cpu_stat_ex;
         wbk_rd_reg_ma <= wbk_rd_reg & cpu_stat_ex;
-		rd_adr_ma <= rd_adr_ex;
-		rd_data_ma <= rd_data_ex;
-		st_data_ma <= st_data_ex;
-		ldst_code_ma <= alu_code_ex;
+		//rd_adr_ma <= rd_adr_ex;
+		//rd_data_ma <= rd_data_ex;
+		//st_data_ma <= st_data_ex;
+		//ldst_code_ma <= alu_code_ex;
 	end
 end
 
