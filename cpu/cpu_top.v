@@ -201,6 +201,7 @@ pc_stage pc_stage (
 	.clk(clk),
 	.rst_n(rst_n),
 	.cpu_start(cpu_start),
+	.init_cpu_start(init_cpu_start),
 	.stall(stall),
 	.cpu_stat_pc(cpu_stat_pc),
 	.csr_rmie(csr_rmie),

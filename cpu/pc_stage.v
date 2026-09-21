@@ -12,6 +12,7 @@ module pc_stage (
 	input clk,
 	input rst_n,
 	input cpu_start,
+	input init_cpu_start,
 	input stall,
 	input cpu_stat_pc,
 	input csr_rmie,
@@ -111,7 +112,7 @@ always @ (posedge clk or negedge rst_n) begin
 		cpu_adr_ld <= 1'b0;
 	else if (cpu_stat_pc)
 		cpu_adr_ld <= 1'b0;
-	else if (cpu_start)
+	else if (cpu_start | init_cpu_start)
 		cpu_adr_ld <= 1'b1;
 end
 
