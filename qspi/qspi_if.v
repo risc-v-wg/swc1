@@ -35,6 +35,13 @@ module qspi_if (
 	input [31:0] write_adr,
 	input [31:0] write_data,
 
+	// scratch RAM (512 x 8bit, 1r1w) port
+	output [8:0] sc_ram_radr,
+	input [7:0] sc_ram_rdata,
+	output [8:0] sc_ram_wadr,
+	output [7:0] sc_ram_wdata,
+	output sc_ram_wen,
+
 	input dma_io_we,
 	input [15:2] dma_io_wadr,
 	input [31:0] dma_io_wdata,
@@ -498,7 +505,7 @@ always @ (posedge clk or negedge rst_n) begin
 		word_data <= { word_data[27:0], sio_in_sync } ;
 end
 
-assign read_data = word_w ? { word_data[7:0], word_data[15:8], word_data[23:16], word_data[31:24] } :
+wire [31:0] qspi_read_data = word_w ? { word_data[7:0], word_data[15:8], word_data[23:16], word_data[31:24] } :
                    word_hw ? { 16'd0, word_data[7:0], word_data[15:8] } : { 24'd0, word_data[7:0] };
 
 // reset counter
@@ -743,6 +750,15 @@ end
 //assign read_data_end = state_read & (read_cntr == 4'd0) & fall_edge;
 assign read_data_end = state_read & (read_cntr == 4'd0);
 
+// scratch RAM address decode (0x03000000 : 512 bytes, aliased in the 16MB window)
+//   qspi cs0 : 0x00000000, cs1 : 0x01000000, cs2 : 0x02000000, scratch : 0x03000000
+wire rd_sc_sel = (read_adr[25:24] == 2'd3);
+wire wr_sc_sel = (write_adr[25:24] == 2'd3);
+
+// requests to the flash side (scratch accesses never reach the qspi state machine)
+wire qspi_read_req = read_req & ~rd_sc_sel;
+wire qspi_write_req = write_req & ~wr_sc_sel;
+
 // inner i/f state machine
 `define IN_IDLE  2'b00
 `define IN_READ  2'b01
@@ -771,8 +787,8 @@ end
 endfunction
 
 wire [1:0] next_inner_state = inner_machine( inner_state,
-											   read_req,
-											   write_req,
+											   qspi_read_req,
+											   qspi_write_req,
 											   read_data_end,
 											   write_data_end);
 
@@ -785,14 +801,14 @@ end
 
 assign cmd_freadq = (inner_state == `IN_READ);
 assign cmd_qwrite = (inner_state == `IN_WRITE);
-assign read_valid = read_data_end & fall_edge;
-assign write_finish = write_data_end;
+wire qspi_read_valid = read_data_end & fall_edge;
+wire qspi_write_finish = write_data_end;
 
 // input signal sampler
 
-wire word_w_pre = read_req ? read_w : write_w;
-wire word_hw_pre = read_req ? read_hw : write_hw;
-wire [25:0] word_adr_pre = read_req ? read_adr[25:0] : write_adr[25:0];
+wire word_w_pre = qspi_read_req ? read_w : write_w;
+wire word_hw_pre = qspi_read_req ? read_hw : write_hw;
+wire [25:0] word_adr_pre = qspi_read_req ? read_adr[25:0] : write_adr[25:0];
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n) begin
@@ -800,7 +816,7 @@ always @ (posedge clk or negedge rst_n) begin
 		word_hw <= 1'b0;
 		word_adr <= 26'd0;
 	end
-	else if (read_req | write_req) begin
+	else if (qspi_read_req | qspi_write_req) begin
 		word_w <= word_w_pre;
 		word_hw <= word_hw_pre;
 		word_adr <= word_adr_pre;
@@ -811,9 +827,84 @@ end
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		write_data_lat <= 32'd0;
-	else if (write_req)
+	else if (qspi_write_req)
 		write_data_lat <= write_data;
 end
 
+// scratch RAM access control (512 x 8bit RAM is instantiated in fpga_top, mapped at 0x03000000)
+//   The RAM is byte wide with one write port and one read port, so a word / half word
+//   access is done as 4 / 2 sequential byte accesses (little endian, same as the flash side).
+//   write : req -> N cycles of byte write -> write_finish (in the last write cycle)
+//   read  : req -> N cycles of address issue (data returns one cycle later) -> read_valid
+
+reg sc_busy;
+reg sc_wr;
+reg [1:0] sc_last;   // number of bytes - 1
+reg [2:0] sc_step;
+reg [8:0] sc_adr;
+reg [31:0] sc_wdata;
+reg [31:0] sc_rdata;
+
+wire sc_read_req = read_req & rd_sc_sel;
+wire sc_write_req = write_req & wr_sc_sel & ~sc_read_req;
+wire sc_start = (sc_read_req | sc_write_req) & ~sc_busy;
+
+wire sc_w_pre = sc_read_req ? read_w : write_w;
+wire sc_hw_pre = sc_read_req ? read_hw : write_hw;
+wire [8:0] sc_adr_pre = sc_read_req ? read_adr[8:0] : write_adr[8:0];
+
+wire sc_wr_last = sc_busy & sc_wr & (sc_step == { 1'b0, sc_last });
+wire sc_rd_done = sc_busy & ~sc_wr & (sc_step == { 1'b0, sc_last } + 3'd2);
+wire sc_rd_cap = sc_busy & ~sc_wr & (sc_step != 3'd0) & ~sc_rd_done;
+wire [1:0] sc_cap_idx = sc_step[1:0] - 2'd1;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n) begin
+		sc_busy <= 1'b0;
+		sc_wr <= 1'b0;
+		sc_last <= 2'd0;
+		sc_step <= 3'd0;
+		sc_adr <= 9'd0;
+		sc_wdata <= 32'd0;
+	end
+	else if (sc_start) begin
+		sc_busy <= 1'b1;
+		sc_wr <= ~sc_read_req;
+		sc_last <= sc_w_pre ? 2'd3 : sc_hw_pre ? 2'd1 : 2'd0;
+		sc_step <= 3'd0;
+		sc_adr <= sc_adr_pre;
+		sc_wdata <= write_data;
+	end
+	else if (sc_wr_last | sc_rd_done) begin
+		sc_busy <= 1'b0;
+		sc_step <= 3'd0;
+	end
+	else if (sc_busy) begin
+		sc_step <= sc_step + 3'd1;
+	end
+end
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		sc_rdata <= 32'd0;
+	else if (sc_start)
+		sc_rdata <= 32'd0;
+	else if (sc_rd_cap)
+		sc_rdata[{ sc_cap_idx, 3'd0 } +: 8] <= sc_ram_rdata;
+end
+
+wire [8:0] sc_byte_adr = sc_adr + { 7'd0, sc_step[1:0] };
+assign sc_ram_radr = sc_byte_adr;
+assign sc_ram_wadr = sc_byte_adr;
+assign sc_ram_wdata = sc_wdata[{ sc_step[1:0], 3'd0 } +: 8];
+assign sc_ram_wen = sc_busy & sc_wr;
+
+wire sc_read_valid = sc_rd_done;
+wire sc_write_finish = sc_wr_last;
+
+// merge with the flash side
+assign read_valid = qspi_read_valid | sc_read_valid;
+assign write_finish = qspi_write_finish | sc_write_finish;
+assign read_data = sc_read_valid ? sc_rdata : qspi_read_data;
 
 endmodule
