@@ -83,9 +83,9 @@ wire [31:0] write_adr; // output
 wire [31:0] write_data; // output
 
 // scratch RAM (mapped at 0x03000000 via qspi_if)
-wire [8:0] sc_ram_radr; // output
+wire [5:0] sc_ram_radr; // output
 wire [7:0] sc_ram_rdata; // input
-wire [8:0] sc_ram_wadr; // output
+wire [5:0] sc_ram_wadr; // output
 wire [7:0] sc_ram_wdata; // output
 wire sc_ram_wen; // output
 

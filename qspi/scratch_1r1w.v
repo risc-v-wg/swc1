@@ -10,17 +10,17 @@
 
 module scratch_1r1w(
 	input clk,
-	input [8:0] ram_radr,
+	input [5:0] ram_radr,
 	output [7:0] ram_rdata,
-	input [8:0] ram_wadr,
+	input [5:0] ram_wadr,
 	input [7:0] ram_wdata,
 	input ram_wen
 	);
 
-// 512x8 1r1w RAM
+// 64x8 1r1w RAM
 
-reg[7:0] ram[0:511];
-reg[8:0] radr;
+reg[7:0] ram[0:63];
+reg[5:0] radr;
 
 always @ (posedge clk) begin
 	if (ram_wen)

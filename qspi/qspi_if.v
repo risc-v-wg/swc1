@@ -35,10 +35,10 @@ module qspi_if (
 	input [31:0] write_adr,
 	input [31:0] write_data,
 
-	// scratch RAM (512 x 8bit, 1r1w) port
-	output [8:0] sc_ram_radr,
+	// scratch RAM (64 x 8bit, 1r1w) port
+	output [5:0] sc_ram_radr,
 	input [7:0] sc_ram_rdata,
-	output [8:0] sc_ram_wadr,
+	output [5:0] sc_ram_wadr,
 	output [7:0] sc_ram_wdata,
 	output sc_ram_wen,
 
@@ -750,7 +750,7 @@ end
 //assign read_data_end = state_read & (read_cntr == 4'd0) & fall_edge;
 assign read_data_end = state_read & (read_cntr == 4'd0);
 
-// scratch RAM address decode (0x03000000 : 512 bytes, aliased in the 16MB window)
+// scratch RAM address decode (0x03000000 : 64 bytes, aliased in the 16MB window)
 //   qspi cs0 : 0x00000000, cs1 : 0x01000000, cs2 : 0x02000000, scratch : 0x03000000
 wire rd_sc_sel = (read_adr[25:24] == 2'd3);
 wire wr_sc_sel = (write_adr[25:24] == 2'd3);
@@ -831,7 +831,7 @@ always @ (posedge clk or negedge rst_n) begin
 		write_data_lat <= write_data;
 end
 
-// scratch RAM access control (512 x 8bit RAM is instantiated in fpga_top, mapped at 0x03000000)
+// scratch RAM access control (64 x 8bit RAM is instantiated in fpga_top, mapped at 0x03000000)
 //   The RAM is byte wide with one write port and one read port, so a word / half word
 //   access is done as 4 / 2 sequential byte accesses (little endian, same as the flash side).
 //   write : req -> N cycles of byte write -> write_finish (in the last write cycle)
@@ -841,7 +841,7 @@ reg sc_busy;
 reg sc_wr;
 reg [1:0] sc_last;   // number of bytes - 1
 reg [2:0] sc_step;
-reg [8:0] sc_adr;
+reg [5:0] sc_adr;
 reg [31:0] sc_wdata;
 reg [31:0] sc_rdata;
 
@@ -851,7 +851,7 @@ wire sc_start = (sc_read_req | sc_write_req) & ~sc_busy;
 
 wire sc_w_pre = sc_read_req ? read_w : write_w;
 wire sc_hw_pre = sc_read_req ? read_hw : write_hw;
-wire [8:0] sc_adr_pre = sc_read_req ? read_adr[8:0] : write_adr[8:0];
+wire [5:0] sc_adr_pre = sc_read_req ? read_adr[5:0] : write_adr[5:0];
 
 wire sc_wr_last = sc_busy & sc_wr & (sc_step == { 1'b0, sc_last });
 wire sc_rd_done = sc_busy & ~sc_wr & (sc_step == { 1'b0, sc_last } + 3'd2);
@@ -864,7 +864,7 @@ always @ (posedge clk or negedge rst_n) begin
 		sc_wr <= 1'b0;
 		sc_last <= 2'd0;
 		sc_step <= 3'd0;
-		sc_adr <= 9'd0;
+		sc_adr <= 6'd0;
 		sc_wdata <= 32'd0;
 	end
 	else if (sc_start) begin
@@ -893,7 +893,7 @@ always @ (posedge clk or negedge rst_n) begin
 		sc_rdata[{ sc_cap_idx, 3'd0 } +: 8] <= sc_ram_rdata;
 end
 
-wire [8:0] sc_byte_adr = sc_adr + { 7'd0, sc_step[1:0] };
+wire [5:0] sc_byte_adr = sc_adr + { 4'd0, sc_step[1:0] };
 assign sc_ram_radr = sc_byte_adr;
 assign sc_ram_wadr = sc_byte_adr;
 assign sc_ram_wdata = sc_wdata[{ sc_step[1:0], 3'd0 } +: 8];
