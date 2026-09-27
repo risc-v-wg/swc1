@@ -93,43 +93,43 @@ end
 // for tiny tapeout
 
 // clk 1MHz - 4MHz, 8MHz, 4800 - 19200bps, 38400bps
-//`define TERM_0 16'd209
+//`define U2TERM_0 16'd209
 // test1 5MHz, 10MHz  19200bps, 38400bps
-//`define TERM_1 16'd261
+//`define U2TERM_1 16'd261
 // clk:3MHz,6MHz,9MHz 19200bps, 38400bps, 57600bps
-//`define TERM_2 16'd156
+//`define U2TERM_2 16'd156
 // clk:7MHz, 38400bps
-//`define TERM_3 16'd184
+//`define U2TERM_3 16'd184
 
 
 // for fpga *** please comment out for tiny tapeout ***
 
 // clk 50MHz, 9600bps
-`define TERM_1 16'd5208
+`define U2TERM_1 16'd5208
 // clk 50MHz, 921600bps
-//`define TERM_1 16'd54
+//`define U2TERM_1 16'd54
 // test1 6MHz 38400bps
-//`define TERM_1 16'd156
+//`define U2TERM_1 16'd156
 // test2 5MHz 19200bps
-//`define TERM_1 16'd261
+//`define U2TERM_1 16'd261
 // test3 7MHz 384000bps
-//`define TERM_1 16'd184
+//`define U2TERM_1 16'd184
 // test4 8MHz 384000bps
-//`define TERM_1 16'd209
+//`define U2TERM_1 16'd209
 // test5 16MHz 576000bps
-//`define TERM_1 16'd278
+//`define U2TERM_1 16'd278
 // test6 17MHz 576000bps
-//`define TERM_1 16'd295
+//`define U2TERM_1 16'd295
 // test7 14MHz 576000bps
-//`define TERM_1 16'd243
+//`define U2TERM_1 16'd243
 // test8 20MHz 576000bps
-//`define TERM_1 16'd348
+//`define U2TERM_1 16'd348
 // test10 13MHz 576000bps
-//`define TERM_1 16'd226
+//`define U2TERM_1 16'd226
 	
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
-        uart_term <= `TERM_1;
+        uart_term <= `U2TERM_1;
 	else if ( we_uart_term )
 		uart_term <= dma_io_wdata[15:0];
 end
@@ -195,7 +195,7 @@ end
 assign dma_io_rdata = (re_uart_rdflg_dly[0]) ? { 24'd0, uart_io_char } :
                       (re_uart_rdflg_dly[1]) ? { 28'd0, tx_fifo_underrun, tx_fifo_overrun, uart_io_full, uart2_io_en } :
                       (re_uart_rdflg_dly[2]) ? { 16'd0, uart_term } :
-                      (re_uart_rdflg_dly[3]) ? { 21'd0, rx_fifo_underrun, rx_fifo_overrun, rx_fifo_full, rx_first_read, rx_data_latch } :
+                      (re_uart_rdflg_dly[3]) ? { 20'd0, rx_fifo_underrun, rx_fifo_overrun, rx_fifo_full, rx_first_read, rx_data_latch } :
                       (re_uart_rdflg_dly[4]) ? { 31'd0, rx_disable_echoback_value } : dma_io_rdata_in;
 
 // instance

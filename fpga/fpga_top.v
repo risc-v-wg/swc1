@@ -38,7 +38,10 @@ module fpga_top (
 	//input [7:0] sram_q,
 
 	inout [1:0] init_latency,
-	//input [1:0] init_latency,
+	//input [1:0] init_latency_i,
+	//output [1:0] init_latency_o,
+	//output init_latency_en,
+
 	input init_qspicmd,
 	input init_cpu_start,
 	input [1:0] init_uart
@@ -184,11 +187,15 @@ assign rgb_led = spi_select_io ? { spi_mosi, spi_csn[0], spi_sck } : rgb_led_org
 wire spi_miso = init_qspicmd; // input
 
 // uart2 IO selector
+//wire [1:0] init_latency = init_latency_i;
+
 wire rx2 = init_latency[0]; // input
 wire tx2; // output
 wire uart2_io_en; // output
 
 assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
+//assign init_latency_o = { tx2, 1'b0 };
+//assign init_latency_en = uart2_io_en;
 
 // io bus logics
 wire dma_io_we = dma_io_we_c | dma_io_we_u;

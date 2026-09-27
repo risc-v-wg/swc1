@@ -414,7 +414,7 @@ reg [9:0] tx_out_data;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
-		tx_out_data <= 9'd1;
+		tx_out_data <= 10'd1;
 	else if (tx_cntr_start)
 		tx_out_data <= { 1'b1, tx_rdata, 1'b0 };
 	else if (tx_cntr_next)
