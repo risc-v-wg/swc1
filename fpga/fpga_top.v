@@ -37,7 +37,8 @@ module fpga_top (
 	//output [7:0] sram_d,
 	//input [7:0] sram_q,
 
-	input [1:0] init_latency,
+	inout [1:0] init_latency,
+	//input [1:0] init_latency,
 	input init_qspicmd,
 	input init_cpu_start,
 	input [1:0] init_uart
@@ -136,6 +137,7 @@ wire [31:0] dma_io_rdata_in_3; // input
 wire [31:0] dma_io_rdata_in_4; // input
 wire [31:0] dma_io_rdata_in_5; // input
 wire [31:0] dma_io_rdata_in_6; // input
+wire [31:0] dma_io_rdata_in_7; // input
 
 // csr monitor bus
 wire csr_radr_en_mon; // output
@@ -157,6 +159,7 @@ wire csr_mtie;
 wire frc_cntr_val_leq;
 //wire interrupt_clear;
 wire ext_uart_interrpt_1shot;
+wire ext_uart2_interrpt_1shot;
 wire csr_rmie;
 wire csr_meie;
 wire g_interrupt_1shot;
@@ -179,6 +182,13 @@ wire [2:0] dbg_bpoint;
 // spi IO selector
 assign rgb_led = spi_select_io ? { spi_mosi, spi_csn[0], spi_sck } : rgb_led_org;
 wire spi_miso = init_qspicmd; // input
+
+// uart2 IO selector
+wire rx2 = init_latency[0]; // input
+wire tx2; // output
+wire uart2_io_en; // output
+
+assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
 
 // io bus logics
 wire dma_io_we = dma_io_we_c | dma_io_we_u;
@@ -447,6 +457,7 @@ interrupter interrupter (
 	.rst_n(rst_n),
 	.interrupt_0(interrupt_0),
 	.ext_uart_interrpt_1shot(ext_uart_interrpt_1shot),
+	.ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
 	.csr_rmie(csr_rmie),
 	.csr_meie(csr_meie),
 	.g_interrupt_1shot(g_interrupt_1shot),
@@ -469,12 +480,28 @@ io_spi_lite io_spi_lite(
 	.dma_io_radr(dma_io_radr),
 	.dma_io_radr_en(dma_io_radr_en),
 	.dma_io_rdata_in(dma_io_rdata_in_6),
-	.dma_io_rdata(dma_io_rdata),
+	.dma_io_rdata(dma_io_rdata_in_7),
 	.spi_select_io(spi_select_io),
 	.spi_sck(spi_sck),
 	.spi_csn(spi_csn),
 	.spi_mosi(spi_mosi),
 	.spi_miso(spi_miso)
+	);
+
+io_uart2 io_uart2 (
+	.clk(clk),
+	.rst_n(rst_n),
+	.rx2(rx2),
+	.tx2(tx2),
+	.dma_io_we(dma_io_we),
+	.dma_io_wadr(dma_io_wadr),
+	.dma_io_wdata(dma_io_wdata),
+	.dma_io_radr(dma_io_radr),
+	.dma_io_radr_en(dma_io_radr_en),
+	.dma_io_rdata_in(dma_io_rdata_in_7),
+	.dma_io_rdata(dma_io_rdata),
+	.ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
+	.uart2_io_en(uart2_io_en)
 	);
 
 endmodule

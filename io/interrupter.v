@@ -16,6 +16,7 @@ module interrupter(
 	// from clear I/O ( temporary in i/o FRC block)
 	//input interrupt_clear,
 	input ext_uart_interrpt_1shot,
+	input ext_uart2_interrpt_1shot,
 	// from csr
 	input csr_meie,
 	input csr_rmie,
@@ -63,17 +64,18 @@ wire re_int_enable = dma_io_radr_en & (dma_io_radr == `SYS_INT_ENABLE);
 wire we_int_status = dma_io_we      & (dma_io_wadr == `SYS_INT_STATUS);
 wire re_int_status = dma_io_radr_en & (dma_io_radr == `SYS_INT_STATUS);
 
-reg [1:0] int_enable;
+reg [2:0] int_enable;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
-		int_enable <= 2'b00;
+		int_enable <= 3'b000;
 	else if ( we_int_enable )
-		int_enable <= dma_io_wdata[1:0];
+		int_enable <= dma_io_wdata[2:0];
 end
 
 wire int_enable_rx = int_enable[0];
 wire int_enable_int0 = int_enable[1];
+wire int_enable_rx2 = int_enable[2];
 
 wire interrupt_clear_rx;
 
@@ -86,6 +88,19 @@ always @ (posedge clk or negedge rst_n) begin
 		int_status_rx <= 1'b0;
 	else if (csr_meie & int_enable_rx & ext_uart_interrpt_1shot)
 		int_status_rx <= 1'b1;
+end
+
+wire interrupt_clear_rx2;
+
+reg int_status_rx2;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		int_status_rx2 <= 1'b0;
+	else if (interrupt_clear_rx2)
+		int_status_rx2 <= 1'b0;
+	else if (csr_meie & int_enable_rx2 & ext_uart2_interrpt_1shot)
+		int_status_rx2 <= 1'b1;
 end
 
 wire interrupt_clear_int0;
@@ -101,7 +116,7 @@ always @ (posedge clk or negedge rst_n) begin
 		int_status_int0 <= 1'b1;
 end
 
-assign g_interrupt = (int_status_rx | int_status_int0) & csr_rmie;
+assign g_interrupt = (int_status_rx2 | int_status_rx | int_status_int0) & csr_rmie;
 
 reg g_interrupt_dly;
 always @ (posedge clk or negedge rst_n) begin
@@ -117,7 +132,7 @@ assign g_interrupt_1shot = g_interrupt & ~g_interrupt_dly;
 
 assign interrupt_clear_rx   = we_int_status & ~dma_io_wdata[0];
 assign interrupt_clear_int0 = we_int_status & ~dma_io_wdata[1];
-
+assign interrupt_clear_rx2  = we_int_status & ~dma_io_wdata[2];
 
 // read part
 reg [1:0] re_int_dly;
@@ -129,7 +144,7 @@ always @ (posedge clk or negedge rst_n) begin
 		re_int_dly <= { re_int_status, re_int_enable } ;
 end
 
-assign dma_io_rdata = (re_int_dly[0]) ? { 30'd0, int_enable } :
-                      (re_int_dly[1]) ? { 30'd0, int_status_int0, int_status_rx } : dma_io_rdata_in;
+assign dma_io_rdata = (re_int_dly[0]) ? { 29'd0, int_enable } :
+                      (re_int_dly[1]) ? { 29'd0, int_status_rx2, int_status_int0, int_status_rx } : dma_io_rdata_in;
 
 endmodule
