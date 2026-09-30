@@ -63,6 +63,7 @@ wire re_uart_full = dma_io_radr_en & (dma_io_radr == `SYS_UART2_ENBL);
 wire we_uart_term = dma_io_we      & (dma_io_wadr == `SYS_UART2_TERM);
 wire re_uart_term = dma_io_radr_en & (dma_io_radr == `SYS_UART2_TERM);
 
+wire we_uart_rxch = dma_io_we      & (dma_io_wadr == `SYS_UART2_RXCH);
 wire re_uart_rxch = dma_io_radr_en & (dma_io_radr == `SYS_UART2_RXCH);
 
 wire we_uart_rxec = dma_io_we      & (dma_io_wadr == `SYS_UART2_RXEC);
@@ -88,6 +89,16 @@ always @ (posedge clk or negedge rst_n) begin
 	else if ( we_uart_full )
 		uart2_io_en <= dma_io_wdata[0];
 end
+
+// for fifo reset
+// for debugging sample
+//(* MARK_DEBUG = "true" *) wire tx_fifo_rst;
+//(* MARK_DEBUG = "true" *) wire rx_fifo_rst;
+wire tx_fifo_rst;
+wire rx_fifo_rst;
+
+assign tx_fifo_rst = we_uart_full & dma_io_wdata[16];
+assign rx_fifo_rst = we_uart_rxch & dma_io_wdata[16];
 
 // UART term reset values
 // for tiny tapeout
@@ -153,6 +164,8 @@ reg [4:0] re_uart_rdflg_dly;
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
         rx_first_read <= 1'b0 ;
+    else if (rx_fifo_rst)
+        rx_first_read <= 1'b0 ;
 	else if ( re_uart_rdflg_dly[3] ) // clear when read
         rx_first_read <= 1'b0 ;
 	else if ( rout_en ) // set when write
@@ -160,16 +173,18 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 // wirte when not read error bit
-reg rx_write_error;
+//reg rx_write_error;
 
-always @ (posedge clk or negedge rst_n) begin
-    if (~rst_n)
-        rx_write_error <= 1'b0 ;
-	else if ( re_uart_rdflg_dly[3] ) // clear when read
-        rx_write_error <= 1'b0 ;
-	else if ( rout_en & rx_first_read ) // set when write on not read data
-        rx_write_error <= 1'b1 ;
-end
+//always @ (posedge clk or negedge rst_n) begin
+    //if (~rst_n)
+        //rx_write_error <= 1'b0 ;
+    //else if (rx_fifo_rst)
+        //rx_write_error <= 1'b0 ;
+	//else if ( re_uart_rdflg_dly[3] ) // clear when read
+        //rx_write_error <= 1'b0 ;
+	//else if ( rout_en & rx_first_read ) // set when write on not read data
+        //rx_write_error <= 1'b1 ;
+//end
 
 // disable echo back bit
 reg rx_disable_echoback_value;
@@ -216,11 +231,13 @@ io_uart2_if io_uart2_if (
 	.rx_fifo_dvalid(rx_fifo_dvalid),
 	.rx_fifo_overrun(rx_fifo_overrun),
 	.rx_fifo_underrun(rx_fifo_underrun),
+	.rx_fifo_rst(rx_fifo_rst),
 	.tx_wdata(tx_wdata),
 	.tx_wten(tx_wten),
 	.tx_fifo_full(uart_io_full),
 	.tx_fifo_overrun(tx_fifo_overrun),
 	.tx_fifo_underrun(tx_fifo_underrun),
+	.tx_fifo_rst(tx_fifo_rst),
 	.rx_disable_echoback_value(rx_disable_echoback_value),
 	//.rx_fifo_rcntrs(rx_fifo_rcntrs),
 	.uart_term(uart_term)
