@@ -42,9 +42,6 @@ module fpga_top (
 	//output [1:0] init_latency_o,
 	//output init_latency_en,
 
-	//output [128:0] nanodec,
-	//output [11:0] nanodec_part,
-
 	input init_qspicmd,
 	input init_cpu_start,
 	input [1:0] init_uart
@@ -144,7 +141,6 @@ wire [31:0] dma_io_rdata_in_4; // input
 wire [31:0] dma_io_rdata_in_5; // input
 wire [31:0] dma_io_rdata_in_6; // input
 wire [31:0] dma_io_rdata_in_7; // input
-wire [31:0] dma_io_rdata_in_8; // input
 
 // csr monitor bus
 wire csr_radr_en_mon; // output
@@ -200,20 +196,6 @@ wire uart2_io_en; // output
 assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
 //assign init_latency_o = { tx2, 1'b0 };
 //assign init_latency_en = uart2_io_en;
-
-// for fpga LED
-wire [128:0] nanodec;
-//assign nanodec_part = nanodec[11:0]; // checked
-//assign nanodec_part = nanodec[23:12]; // checked
-//assign nanodec_part = nanodec[35:24]; // checked
-//assign nanodec_part = nanodec[47:36]; // checked
-//assign nanodec_part = nanodec[59:48]; // checked
-//assign nanodec_part = nanodec[71:60]; // checked
-//assign nanodec_part = nanodec[83:72]; // checked
-//assign nanodec_part = nanodec[95:84]; // checked
-//assign nanodec_part = nanodec[107:96]; // checked
-//assign nanodec_part = nanodec[119:108]; // checked
-//assign nanodec_part = { 3'd0, nanodec[128:120]}; // checked
 
 // io bus logics
 wire dma_io_we = dma_io_we_c | dma_io_we_u;
@@ -524,26 +506,9 @@ io_uart2 io_uart2 (
 	.dma_io_radr(dma_io_radr),
 	.dma_io_radr_en(dma_io_radr_en),
 	.dma_io_rdata_in(dma_io_rdata_in_7),
-	//.dma_io_rdata(dma_io_rdata),
-	.dma_io_rdata(dma_io_rdata_in_8),
+	.dma_io_rdata(dma_io_rdata),
 	.ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
 	.uart2_io_en(uart2_io_en)
 	);
-
-
-io_nanodec io_nanodec (
-	.clk(clk),
-	.rst_n(rst_n),
-	.nanodec(nanodec),
-	.dma_io_we(dma_io_we),
-	.dma_io_wadr(dma_io_wadr),
-	.dma_io_wdata(dma_io_wdata),
-	.dma_io_radr(dma_io_radr),
-	.dma_io_radr_en(dma_io_radr_en),
-	.dma_io_rdata_in(dma_io_rdata_in_8),
-	.dma_io_rdata(dma_io_rdata)
-	);
-
-
 
 endmodule
