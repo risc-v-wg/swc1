@@ -19,12 +19,14 @@ module io_uart2_if(
 	output rx_fifo_dvalid,
 	output rx_fifo_overrun,
 	output rx_fifo_underrun,
+	input rx_fifo_rst,
 
 	input [7:0] tx_wdata,
 	input tx_wten,
 	output tx_fifo_full,
 	output tx_fifo_overrun,
 	output tx_fifo_underrun,
+	input tx_fifo_rst,
 	//output [2:0] rx_fifo_rcntrs,
 	input rx_disable_echoback_value,
 	input [15:0] uart_term
@@ -105,6 +107,15 @@ always @ (posedge clk or negedge rst_n) begin
 		s3 <= 1'b1;
 		s4 <= 1'b1;
 	end
+	else if (rx_fifo_rst) begin
+		rx1 <= 1'b1;
+		rx2 <= 1'b1;
+		s0 <= 1'b1;
+		s1 <= 1'b1;
+		s2 <= 1'b1;
+		s3 <= 1'b1;
+		s4 <= 1'b1;
+	end
 	else begin
 		rx1 <= rx;
 		rx2 <= rx1;
@@ -154,6 +165,8 @@ reg [15:0] sample_cntr;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
+		sample_cntr <= 16'd0;
+	else if (rx_fifo_rst)
 		sample_cntr <= 16'd0;
 	else if (start_trg)
 		sample_cntr <= {1'b0, uart_term[15:1]};
@@ -219,7 +232,9 @@ wire [3:0] next_rx_state = rx_state_machine( rx_state,
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
-		rx_state <= 4'd0;
+		rx_state <= `RX_IDLE;
+	else if (rx_fifo_rst)
+		rx_state <= `RX_IDLE;
 	else
 		rx_state <= next_rx_state;
 end
@@ -229,6 +244,8 @@ reg [7:0] byte_data;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
+		byte_data <= 8'd0;
+	else if (rx_fifo_rst)
 		byte_data <= 8'd0;
 	else if (start_ok)
 		byte_data <= 8'd0;
@@ -245,6 +262,8 @@ reg [3:0] rx_fifo_dcntr;
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		rx_fifo_wcntr <= 3'd0;
+	else if (rx_fifo_rst)
+		rx_fifo_wcntr <= 3'd0;
 	else if (end_ok)
 		rx_fifo_wcntr <= rx_fifo_wcntr + 3'd1;
 end
@@ -252,12 +271,16 @@ end
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		rx_fifo_rcntr <= 3'd0;
+	else if (rx_fifo_rst)
+		rx_fifo_rcntr <= 3'd0;
 	else if (rx_rden)
 		rx_fifo_rcntr <= rx_fifo_rcntr + 3'd1;
 end
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
+		rx_fifo_dcntr <= 4'd0;
+	else if (rx_fifo_rst)
 		rx_fifo_dcntr <= 4'd0;
 	else if (end_ok & rx_rden)
 		rx_fifo_dcntr <= rx_fifo_dcntr;		
@@ -299,6 +322,8 @@ wire tx_wten_echo = (~rx_disable_echoback_value & end_ok) | tx_wten;
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		tx_fifo_wcntr <= 3'd0;
+	else if (tx_fifo_rst)
+		tx_fifo_wcntr <= 3'd0;
 	else if (tx_wten_echo)
 		tx_fifo_wcntr <= tx_fifo_wcntr + 3'd1;
 end
@@ -306,12 +331,16 @@ end
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		tx_fifo_rcntr <= 3'd0;
+	else if (tx_fifo_rst)
+		tx_fifo_rcntr <= 3'd0;
 	else if (tx_rden)
 		tx_fifo_rcntr <= tx_fifo_rcntr + 3'd1;
 end
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
+		tx_fifo_dcntr <= 4'd0;
+	else if (tx_fifo_rst)
 		tx_fifo_dcntr <= 4'd0;
 	else if (tx_wten_echo & tx_rden)
 		tx_fifo_dcntr <= tx_fifo_dcntr;		
@@ -352,6 +381,8 @@ wire tx_cntr_start = tx_fifo_dvalid & (tx_state == `TX_IDLE);
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		tx_out_cntr <= 4'd0;
+	else if (tx_fifo_rst)
+		tx_out_cntr <= 4'd0;
 	else if (tx_cntr_start)
 		tx_out_cntr <= 4'd10;
 	else if (tx_out_cntr == 4'd0)
@@ -367,6 +398,8 @@ wire tx_start_cycle = tx_cntr_start | tx_cntr_next;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
+		tx_cycle_cntr <= 16'd0;
+	else if (tx_fifo_rst)
 		tx_cycle_cntr <= 16'd0;
 	else if (tx_start_cycle)
 		tx_cycle_cntr <= uart_term;
@@ -406,6 +439,8 @@ wire [1:0] next_tx_state = tx_state_machine( tx_state, tx_fifo_dvalid, tx_cntr_f
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		tx_state <= `TX_IDLE;
+	else if (tx_fifo_rst)
+		tx_state <= `TX_IDLE;
 	else
 		tx_state <= next_tx_state;
 end
@@ -414,6 +449,8 @@ reg [9:0] tx_out_data;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
+		tx_out_data <= 10'd1;
+	else if (tx_fifo_rst)
 		tx_out_data <= 10'd1;
 	else if (tx_cntr_start)
 		tx_out_data <= { 1'b1, tx_rdata, 1'b0 };
