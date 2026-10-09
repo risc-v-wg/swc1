@@ -334,7 +334,8 @@ assign jmp_condition_ex = cmd_jal_ex | cmd_jalr_ex | cmd_br_ex &
 
 // ecall, ebreak
 //assign ecall_condition_ex = (( cmd_ecall_ex | cmd_ebreak_ex) & csr_rmie & csr_msie ) | illegal_ops_ex;
-assign ecall_condition_ex = (( cmd_ecall_ex | cmd_ebreak_ex) & csr_rmie ) | illegal_ops_ex;
+// ecall/ebreak/illegal are synchronous exceptions : taken regardless of MIE
+assign ecall_condition_ex = cmd_ecall_ex | cmd_ebreak_ex | illegal_ops_ex;
 
 // FF to DMRW
 assign rd_adr_ma = rd_adr_ex;

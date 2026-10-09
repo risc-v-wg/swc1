@@ -46,30 +46,12 @@ module pc_stage (
 
 // interrupt & ecall, ebreak timings
 
-// ecall, ebreak keeper
-reg cmd_ecall_pc_pre;
-reg cmd_ebreak_pc_pre;
-
-always @ (posedge clk or negedge rst_n) begin
-	if (~rst_n)
-		cmd_ecall_pc_pre <= 1'b0;
-	else if (cpu_stat_pc)
-		cmd_ecall_pc_pre <= 1'b0;
-	else if (cmd_ecall_ex)
-		cmd_ecall_pc_pre <= 1'b1;
-end
-
-always @ (posedge clk or negedge rst_n) begin
-	if (~rst_n)
-		cmd_ebreak_pc_pre <= 1'b0;
-	else if (cpu_stat_pc)
-		cmd_ebreak_pc_pre <= 1'b0;
-	else if (cmd_ebreak_ex)
-		cmd_ebreak_pc_pre <= 1'b1;
-end
-
-assign cmd_ecall_pc = cpu_stat_pc & cmd_ecall_pc_pre & ~interrupts_in_pc_state & csr_rmie;
-assign cmd_ebreak_pc = cpu_stat_pc & cmd_ebreak_pc_pre & ~interrupts_in_pc_state & csr_rmie;
+// ecall, ebreak
+// The decoder output is still valid in the PC state (inst is only updated in IMR),
+// so it is used directly. Do NOT gate with csr_rmie: ecall/ebreak are synchronous
+// exceptions and must be taken even when MIE=0 (e.g. inside an interrupt routine).
+assign cmd_ecall_pc = cpu_stat_pc & cmd_ecall_ex & ~interrupts_in_pc_state;
+assign cmd_ebreak_pc = cpu_stat_pc & cmd_ebreak_ex & ~interrupts_in_pc_state;
 
 reg g_interrupt_latch;
 wire frc_cntr_val_leq_1shot;
@@ -80,6 +62,9 @@ assign interrupts_in_pc_state = (g_interrupt_latch | frc_cntr_val_leq_latch) & c
 //wire interrupt_mskd = (g_interrupt_latch  | g_exception | frc_cntr_val_leq_latch) & csr_rmie;
 wire interrupt_mskd = (g_interrupt_latch  | frc_cntr_val_leq_latch) & csr_rmie | g_exception;
 wire intr_ecall_exception = ecall_condition_ex | interrupt_mskd;
+// pending interrupt seen by ecall/exception logic : masked by MIE
+wire int_pending_m = (g_interrupt | frc_cntr_val_leq) & csr_rmie;
+
 wire jump_cmd_cond = jmp_condition_ex | cmd_mret_ex; // | cmd_sret_ex | cmd_uret_ex;
 
 wire jmp_cond = intr_ecall_exception | jump_cmd_cond;
@@ -164,14 +149,14 @@ end
 //assign pc_excep = (g_exception) ? pc :
                   //(jmp_condition_ex) ? jmp_adr_ex : pc_p1;
 
-assign pc_excep = (ecall_condition_ex & (g_interrupt | frc_cntr_val_leq)) ? pc_csr_mtvec :
-                  (ecall_condition_ex & ~g_interrupt & ~frc_cntr_val_leq) ? pc :
+assign pc_excep = (ecall_condition_ex & int_pending_m) ? pc_csr_mtvec :
+                  (ecall_condition_ex & ~int_pending_m) ? pc :
                   (jmp_condition_ex) ? jmp_adr_ex : pc_p1;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		pc_excep2 <= 30'd0;
-	else if (ecall_condition_ex & (g_interrupt | frc_cntr_val_leq))
+	else if (ecall_condition_ex & int_pending_m)
 		pc_excep2 <= pc;
 end
 
@@ -180,7 +165,7 @@ reg pc_int_ecall_syn_state;
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
 		pc_int_ecall_syn_state <= 1'b0;
-	else if (ecall_condition_ex & (g_interrupt | frc_cntr_val_leq))
+	else if (ecall_condition_ex & int_pending_m)
 		pc_int_ecall_syn_state <= 1'b1;
 	else if (cmd_mret_ex & cpu_stat_pc)
 		pc_int_ecall_syn_state <= 1'b0;
