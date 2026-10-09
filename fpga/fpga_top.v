@@ -8,6 +8,8 @@
  * @version		0.1
  */
 
+`define FPGA_MODE
+
 module fpga_top (
 	input clkin,
 	input rst_n,
@@ -16,31 +18,55 @@ module fpga_top (
 
 	output sck,
 	output [2:0] ce_n,
+`ifdef FPGA_MODE
 	inout [3:0] sio,
-	//input [3:0] sio_i,
-	//output [3:0] sio_o,
-	//output sio_en,
+`else // FPGA_MODE
+	input [3:0] sio_i,
+	output [3:0] sio_o,
+	output sio_en,
+`endif // FPGA_MODE
 
 	input rx,
 	output tx,
 	output [2:0] rgb_led,
+`ifdef FPGA_MODE
 	inout [3:0] gpio,
-	//input [3:0] gpio_i,
-	//output [3:0] gpio_o,
-	//output [3:0] gpio_en,
+`else // FPGA_MODE
+	input [3:0] gpio_i,
+	output [3:0] gpio_o,
+	output [3:0] gpio_en,
+`endif // FPGA_MODE
 
+`ifndef FPGA_MODE
 	// sram port
-	//output sram_cen,
-	//output sram_gwen,
-	//output [7:0] sram_wen,
-	//output [9:0] sram_a,
-	//output [7:0] sram_d,
-	//input [7:0] sram_q,
+	output sram_gwen_0,
+	output [9:0] sram_a_0,
+	output [7:0] sram_d_0,
+	input [7:0] sram_q_0,
+	
+	output sram_gwen_1,
+	output [9:0] sram_a_1,
+	output [7:0] sram_d_1,
+	input [7:0] sram_q_1,
+	
+	output sram_gwen_2,
+	output [9:0] sram_a_2,
+	output [7:0] sram_d_2,
+	input [7:0] sram_q_2,
+	
+	output sram_gwen_3,
+	output [9:0] sram_a_3,
+	output [7:0] sram_d_3,
+	input [7:0] sram_q_3,
+`endif // FPGA_MODE
 
-	inout [1:0] init_latency,
-	//input [1:0] init_latency_i,
-	//output [1:0] init_latency_o,
-	//output init_latency_en,
+`ifdef FPGA_MODE
+	 inout [1:0] init_latency,
+`else // FPGA_MODE
+	input [1:0] init_latency_i,
+	output [1:0] init_latency_o,
+	output init_latency_en,
+`endif // FPGA_MODE
 
 	input init_qspicmd,
 	input init_cpu_start,
@@ -86,20 +112,45 @@ wire write_hw; // output
 wire [31:0] write_adr; // output
 wire [31:0] write_data; // output
 
-// scratch RAM (mapped at 0x03000000 via qspi_if)
-wire [5:0] sc_ram_radr; // output
-wire [7:0] sc_ram_rdata; // input
-wire [5:0] sc_ram_wadr; // output
+// scratch RAM (4KB, mapped at 0x03000000 via qspi_if)
+// built from four 1024x8 scratch_1r1w banks; bank select / wen decode /
+// read data mux all live inside qspi_if, these wires are a straight passthrough
+wire [9:0] sc_ram_radr; // output
+wire [9:0] sc_ram_wadr; // output
 wire [7:0] sc_ram_wdata; // output
-wire sc_ram_wen; // output
+wire sc_ram_wen_0; // output
+wire sc_ram_wen_1; // output
+wire sc_ram_wen_2; // output
+wire sc_ram_wen_3; // output
+wire sc_ram_wen_4; // output
+wire [7:0] sc_ram_rdata_0; // input
+wire [7:0] sc_ram_rdata_1; // input
+wire [7:0] sc_ram_rdata_2; // input
+wire [7:0] sc_ram_rdata_3; // input
+wire [7:0] sc_ram_rdata_4; // input
 
 // outside sram i/f
-//assign sram_ceb = 1'b0;
-//assign sram_gwen = ~sc_ram_wen;
-//assign sram_wen = 8'd0;
-//assign sram_a = sc_ram_wadr; // same as sc_ram_radr
-//assign sram_d = sc_ram_wdata;
-//assign sc_ram_rdata = sram_q; // input
+`ifndef FPGA_MODE
+assign sram_gwen_0 = ~sc_ram_wen_0;
+assign sram_a_0 = sc_ram_wadr; // same as sc_ram_radr
+assign sram_d_0 = sc_ram_wdata;
+assign sc_ram_rdata_0 = sram_q_0; // input
+
+assign sram_gwen_1 = ~sc_ram_wen_1;
+assign sram_a_1 = sc_ram_wadr; // same as sc_ram_radr
+assign sram_d_1 = sc_ram_wdata;
+assign sc_ram_rdata_1 = sram_q_1; // input
+
+assign sram_gwen_2 = ~sc_ram_wen_2;
+assign sram_a_2 = sc_ram_wadr; // same as sc_ram_radr
+assign sram_d_2 = sc_ram_wdata;
+assign sc_ram_rdata_2 = sram_q_2; // input
+
+assign sram_gwen_3 = ~sc_ram_wen_3;
+assign sram_a_3 = sc_ram_wadr; // same as sc_ram_radr
+assign sram_d_3 = sc_ram_wdata;
+assign sc_ram_rdata_3 = sram_q_3; // input
+`endif // FPGA_MODE
 
 // uart
 wire u_read_req; // input
@@ -162,7 +213,6 @@ wire csr_mtie;
 wire frc_cntr_val_leq;
 //wire interrupt_clear;
 wire ext_uart_interrpt_1shot;
-wire ext_uart2_interrpt_1shot;
 wire csr_rmie;
 wire csr_meie;
 wire g_interrupt_1shot;
@@ -187,15 +237,18 @@ assign rgb_led = spi_select_io ? { spi_mosi, spi_csn[0], spi_sck } : rgb_led_org
 wire spi_miso = init_qspicmd; // input
 
 // uart2 IO selector
-//wire [1:0] init_latency = init_latency_i;
 
+`ifdef FPGA_MODE
 wire rx2 = init_latency[0]; // input
 wire tx2; // output
 wire uart2_io_en; // output
 
 assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
-//assign init_latency_o = { tx2, 1'b0 };
-//assign init_latency_en = uart2_io_en;
+`else // FPGA_MODE
+wire [1:0] init_latency = init_latency_i;
+assign init_latency_o = { tx2, 1'b0 };
+assign init_latency_en = uart2_io_en;
+`endif // FPGA_MODE
 
 // io bus logics
 wire dma_io_we = dma_io_we_c | dma_io_we_u;
@@ -204,13 +257,16 @@ wire [31:0] dma_io_wdata = dma_io_we_u ? dma_io_wdata_u : dma_io_wdata_c;
 wire dma_io_radr_en = dma_io_radr_en_c | dma_io_radr_en_u;
 wire [15:2] dma_io_radr = dma_io_radr_en_u ? dma_io_radr_u : dma_io_radr_c;
 
-//assign clk = clkin;
+`ifdef FPGA_MODE
 clk_wiz_0 clk_wiz_0 (
 	.clk_out1(clk),
 	.reset(~rst_n),
 	.locked(locked),
 	.clk_in1(clkin)
 	);
+`else // FPGA_MODE
+assign clk = clkin;
+`endif // FPGA_MODE
 
 cpu_top cpu_top (
 	.clk(clk),
@@ -356,10 +412,13 @@ qspi_if qspi_if (
 	.rst_n(rst_n),
 	.sck(sck),
 	.ce_n(ce_n),
+`ifdef FPGA_MODE
 	.sio(sio),
-	//.sio_i(sio_i),
-	//.sio_o(sio_o),
-	//.sio_en(sio_en),
+`else // FPGA_MODE
+	.sio_i(sio_i),
+	.sio_o(sio_o),
+	.sio_en(sio_en),
+`endif // FPGA_MODE
 	.dbg_bpoint_en(dbg_bpoint_en),
 	.init_latency(init_latency),
 	.init_qspicmd(init_qspicmd),
@@ -376,10 +435,18 @@ qspi_if qspi_if (
 	.write_adr(write_adr),
 	.write_data(write_data),
 	.sc_ram_radr(sc_ram_radr),
-	.sc_ram_rdata(sc_ram_rdata),
 	.sc_ram_wadr(sc_ram_wadr),
 	.sc_ram_wdata(sc_ram_wdata),
-	.sc_ram_wen(sc_ram_wen),
+	.sc_ram_wen_0(sc_ram_wen_0),
+	.sc_ram_wen_1(sc_ram_wen_1),
+	.sc_ram_wen_2(sc_ram_wen_2),
+	.sc_ram_wen_3(sc_ram_wen_3),
+	.sc_ram_wen_4(sc_ram_wen_4),
+	.sc_ram_rdata_0(sc_ram_rdata_0),
+	.sc_ram_rdata_1(sc_ram_rdata_1),
+	.sc_ram_rdata_2(sc_ram_rdata_2),
+	.sc_ram_rdata_3(sc_ram_rdata_3),
+	.sc_ram_rdata_4(sc_ram_rdata_4),
 	.dma_io_we(dma_io_we),
 	.dma_io_wadr(dma_io_wadr),
 	.dma_io_wdata(dma_io_wdata),
@@ -389,14 +456,52 @@ qspi_if qspi_if (
 	.dma_io_rdata(dma_io_rdata_in_5)
 	);
 
-scratch_1r1w scratch_1r1w (
+`ifdef FPGA_MODE
+scratch_1r1w scratch_1r1w_0 (
 	.clk(clk),
 	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata),
+	.ram_rdata(sc_ram_rdata_0),
 	.ram_wadr(sc_ram_wadr),
 	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen)
+	.ram_wen(sc_ram_wen_0)
 	);
+
+scratch_1r1w scratch_1r1w_1 (
+	.clk(clk),
+	.ram_radr(sc_ram_radr),
+	.ram_rdata(sc_ram_rdata_1),
+	.ram_wadr(sc_ram_wadr),
+	.ram_wdata(sc_ram_wdata),
+	.ram_wen(sc_ram_wen_1)
+	);
+
+scratch_1r1w scratch_1r1w_2 (
+	.clk(clk),
+	.ram_radr(sc_ram_radr),
+	.ram_rdata(sc_ram_rdata_2),
+	.ram_wadr(sc_ram_wadr),
+	.ram_wdata(sc_ram_wdata),
+	.ram_wen(sc_ram_wen_2)
+	);
+
+scratch_1r1w scratch_1r1w_3 (
+	.clk(clk),
+	.ram_radr(sc_ram_radr),
+	.ram_rdata(sc_ram_rdata_3),
+	.ram_wadr(sc_ram_wadr),
+	.ram_wdata(sc_ram_wdata),
+	.ram_wen(sc_ram_wen_3)
+	);
+
+scratch2_1r1w scratch2_1r1w (
+	.clk(clk),
+	.ram_radr(sc_ram_radr[5:0]),
+	.ram_rdata(sc_ram_rdata_4),
+	.ram_wadr(sc_ram_wadr[5:0]),
+	.ram_wdata(sc_ram_wdata),
+	.ram_wen(sc_ram_wen_4)
+	);
+`endif // FPGA_MODE
 
 io_led io_led (
 	.clk(clk),
@@ -416,10 +521,13 @@ io_led io_led (
 	.init_latency(init_latency),
 	.init_cpu_start(init_cpu_start),
 	.gpi_in(init_qspicmd),
+`ifdef FPGA_MODE
 	.gpio(gpio)
-	//.gpio_i(gpio_i),
-	//.gpio_o(gpio_o),
-	//.gpio_en(gpio_en)
+`else // FPGA_MODE
+	.gpio_i(gpio_i),
+	.gpio_o(gpio_o),
+	.gpio_en(gpio_en)
+`endif // FPGA_MODE
 	);
 
 io_uart_out io_uart_out (
@@ -464,7 +572,6 @@ interrupter interrupter (
 	.rst_n(rst_n),
 	.interrupt_0(interrupt_0),
 	.ext_uart_interrpt_1shot(ext_uart_interrpt_1shot),
-	.ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
 	.csr_rmie(csr_rmie),
 	.csr_meie(csr_meie),
 	.g_interrupt_1shot(g_interrupt_1shot),
@@ -496,19 +603,20 @@ io_spi_lite io_spi_lite(
 	);
 
 io_uart2 io_uart2 (
-	.clk(clk),
-	.rst_n(rst_n),
-	.rx2(rx2),
-	.tx2(tx2),
-	.dma_io_we(dma_io_we),
-	.dma_io_wadr(dma_io_wadr),
-	.dma_io_wdata(dma_io_wdata),
-	.dma_io_radr(dma_io_radr),
-	.dma_io_radr_en(dma_io_radr_en),
-	.dma_io_rdata_in(dma_io_rdata_in_7),
-	.dma_io_rdata(dma_io_rdata),
-	.ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
-	.uart2_io_en(uart2_io_en)
-	);
+        .clk(clk),
+        .rst_n(rst_n),
+        .rx2(rx2),
+        .tx2(tx2),
+        .dma_io_we(dma_io_we),
+        .dma_io_wadr(dma_io_wadr),
+        .dma_io_wdata(dma_io_wdata),
+        .dma_io_radr(dma_io_radr),
+        .dma_io_radr_en(dma_io_radr_en),
+        .dma_io_rdata_in(dma_io_rdata_in_7),
+        .dma_io_rdata(dma_io_rdata),
+        .ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
+        .uart2_io_en(uart2_io_en)
+        );
+
 
 endmodule

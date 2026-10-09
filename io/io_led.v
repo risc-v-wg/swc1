@@ -8,6 +8,8 @@
  * @version		0.1
  */
 
+`define FPGA_MODE
+
 module io_led(
 	input clk,
 	input rst_n,
@@ -30,10 +32,13 @@ module io_led(
 	input init_cpu_start,
 	input gpi_in,
 	// gpios
+`ifdef FPGA_MODE
 	inout [3:0] gpio
-    //input [3:0] gpio_i,
-    //output [3:0] gpio_o,
-    //output [3:0] gpio_en
+`else // FPGA_MODE
+	input [3:0] gpio_i,
+	output [3:0] gpio_o,
+	output [3:0] gpio_en
+`endif // FPGA_MODE
 	);
 
 
@@ -135,15 +140,18 @@ assign dma_io_rdata = (re_led_value_dly == 1'b1) ? { 29'd0, led_value[2:0] } :
                       (re_gpio_value_dly[3] == 1'b1) ? { 28'd0, gpio_en_value } : dma_io_rdata_in;
 
 // inout port
+`ifdef FPGA_MODE
 assign gpio[0] = (gpio_en_value[0]) ? gpio_out_value[0] : 1'bz;
 assign gpio[1] = (gpio_en_value[1]) ? gpio_out_value[1] : 1'bz;
 assign gpio[2] = (gpio_en_value[2]) ? gpio_out_value[2] : 1'bz;
 assign gpio[3] = (gpio_en_value[3]) ? gpio_out_value[3] : 1'bz;
-//assign gpio_in = gpio_i;
-//assign gpio_o = gpio_out_value;
-//assign gpio_en = gpio_en_value;
 
 assign gpio_in = gpio; 
+`else // FPGA_MODE
+assign gpio_in = gpio_i;
+assign gpio_o = gpio_out_value;
+assign gpio_en = gpio_en_value;
+`endif // FPGA_MODE
 
 // double latch for input signals
 reg [5:0] gpi_init_lat1;
@@ -163,7 +171,5 @@ always @ (posedge clk or negedge rst_n) begin
         gpio_in_lat2 <= gpio_in_lat1;
 	end
 end
-
-
 
 endmodule

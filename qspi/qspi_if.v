@@ -8,15 +8,20 @@
  * @version		0.1
  */
 
+`define FPGA_MODE
+
 module qspi_if (
 	input clk,
 	input rst_n,
 	output sck,
 	output reg [2:0] ce_n,
+`ifdef FPGA_MODE
 	inout [3:0] sio,
-	//input [3:0] sio_i,
-	//output [3:0] sio_o,
-	//output sio_en,
+`else // FPGA_MODE
+	input [3:0] sio_i,
+	output [3:0] sio_o,
+	output sio_en,
+`endif // FPGA_MODE
 
 	output [2:0] dbg_bpoint_en,
 	input [1:0] init_latency,
@@ -35,12 +40,22 @@ module qspi_if (
 	input [31:0] write_adr,
 	input [31:0] write_data,
 
-	// scratch RAM (64 x 8bit, 1r1w) port
-	output [5:0] sc_ram_radr,
-	input [7:0] sc_ram_rdata,
-	output [5:0] sc_ram_wadr,
+	// scratch RAM (4096 x 8bit / 4KB, 1r1w) port
+	// 4 x 1024x8 banks share one address/data bus; write enable and the
+	// read data mux are decoded/selected in here, fpga_top only wires straight through
+	output [9:0] sc_ram_radr,
+	output [9:0] sc_ram_wadr,
 	output [7:0] sc_ram_wdata,
-	output sc_ram_wen,
+	output sc_ram_wen_0,
+	output sc_ram_wen_1,
+	output sc_ram_wen_2,
+	output sc_ram_wen_3,
+	output sc_ram_wen_4,
+	input [7:0] sc_ram_rdata_0,
+	input [7:0] sc_ram_rdata_1,
+	input [7:0] sc_ram_rdata_2,
+	input [7:0] sc_ram_rdata_3,
+	input [7:0] sc_ram_rdata_4,
 
 	input dma_io_we,
 	input [15:2] dma_io_wadr,
@@ -71,12 +86,15 @@ reg sio_out_enbl;
 reg [3:0] sio_out;
 wire [3:0] sio_in;
 
+`ifdef FPGA_MODE
 assign sio = sio_out_enbl ? sio_out : 4'hz;
 assign sio_in = sio;
 
-//assign sio_in = sio_i;
-//assign sio_o = sio_out;
-//assign sio_en = sio_out_enbl;
+`else // FPGA_MODE
+assign sio_in = sio_i;
+assign sio_o = sio_out;
+assign sio_en = sio_out_enbl;
+`endif // FPGA_MODE
 
 // input FF for meta-stable
 reg [3:0] sio_in_mt0;
@@ -750,7 +768,7 @@ end
 //assign read_data_end = state_read & (read_cntr == 4'd0) & fall_edge;
 assign read_data_end = state_read & (read_cntr == 4'd0);
 
-// scratch RAM address decode (0x03000000 : 64 bytes, aliased in the 16MB window)
+// scratch RAM address decode (0x03000000 : 4096 bytes / 4KB, aliased in the 16MB window)
 //   qspi cs0 : 0x00000000, cs1 : 0x01000000, cs2 : 0x02000000, scratch : 0x03000000
 wire rd_sc_sel = (read_adr[25:24] == 2'd3);
 wire wr_sc_sel = (write_adr[25:24] == 2'd3);
@@ -831,7 +849,7 @@ always @ (posedge clk or negedge rst_n) begin
 		write_data_lat <= write_data;
 end
 
-// scratch RAM access control (64 x 8bit RAM is instantiated in fpga_top, mapped at 0x03000000)
+// scratch RAM access control (512 x 8bit RAM is instantiated in fpga_top, mapped at 0x03000000)
 //   The RAM is byte wide with one write port and one read port, so a word / half word
 //   access is done as 4 / 2 sequential byte accesses (little endian, same as the flash side).
 //   write : req -> N cycles of byte write -> write_finish (in the last write cycle)
@@ -841,7 +859,7 @@ reg sc_busy;
 reg sc_wr;
 reg [1:0] sc_last;   // number of bytes - 1
 reg [2:0] sc_step;
-reg [5:0] sc_adr;
+reg [12:0] sc_adr;
 reg [31:0] sc_wdata;
 reg [31:0] sc_rdata;
 
@@ -851,7 +869,7 @@ wire sc_start = (sc_read_req | sc_write_req) & ~sc_busy;
 
 wire sc_w_pre = sc_read_req ? read_w : write_w;
 wire sc_hw_pre = sc_read_req ? read_hw : write_hw;
-wire [5:0] sc_adr_pre = sc_read_req ? read_adr[5:0] : write_adr[5:0];
+wire [12:0] sc_adr_pre = sc_read_req ? read_adr[12:0] : write_adr[12:0];
 
 wire sc_wr_last = sc_busy & sc_wr & (sc_step == { 1'b0, sc_last });
 wire sc_rd_done = sc_busy & ~sc_wr & (sc_step == { 1'b0, sc_last } + 3'd2);
@@ -864,7 +882,7 @@ always @ (posedge clk or negedge rst_n) begin
 		sc_wr <= 1'b0;
 		sc_last <= 2'd0;
 		sc_step <= 3'd0;
-		sc_adr <= 6'd0;
+		sc_adr <= 13'd0;
 		sc_wdata <= 32'd0;
 	end
 	else if (sc_start) begin
@@ -890,14 +908,37 @@ always @ (posedge clk or negedge rst_n) begin
 	else if (sc_start)
 		sc_rdata <= 32'd0;
 	else if (sc_rd_cap)
-		sc_rdata[{ sc_cap_idx, 3'd0 } +: 8] <= sc_ram_rdata;
+		sc_rdata[{ sc_cap_idx, 3'd0 } +: 8] <= sc_ram_rdata_sel;
 end
 
-wire [5:0] sc_byte_adr = sc_adr + { 4'd0, sc_step[1:0] };
-assign sc_ram_radr = sc_byte_adr;
-assign sc_ram_wadr = sc_byte_adr;
+wire [12:0] sc_byte_adr = sc_adr + { 11'd0, sc_step[1:0] };
+
+// bank select : top 2 bits of the byte address pick 1 of the 4 1024x8 banks,
+// the lower 10 bits are the common address driven to every bank
+wire [2:0] sc_bank = sc_byte_adr[12:10];
+
+reg [2:0] sc_bank_dly;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		sc_bank_dly <= 3'd0;
+	else
+		sc_bank_dly <= sc_bank;
+end
+
+wire [7:0] sc_ram_rdata_sel = (sc_bank_dly == 3'd0) ? sc_ram_rdata_0 :
+                              (sc_bank_dly == 3'd1) ? sc_ram_rdata_1 :
+                              (sc_bank_dly == 3'd2) ? sc_ram_rdata_2 :
+                              (sc_bank_dly == 3'd3) ? sc_ram_rdata_3 : sc_ram_rdata_4;
+
+assign sc_ram_radr = sc_byte_adr[9:0];
+assign sc_ram_wadr = sc_byte_adr[9:0];
 assign sc_ram_wdata = sc_wdata[{ sc_step[1:0], 3'd0 } +: 8];
-assign sc_ram_wen = sc_busy & sc_wr;
+assign sc_ram_wen_0 = sc_busy & sc_wr & (sc_bank == 3'd0);
+assign sc_ram_wen_1 = sc_busy & sc_wr & (sc_bank == 3'd1);
+assign sc_ram_wen_2 = sc_busy & sc_wr & (sc_bank == 3'd2);
+assign sc_ram_wen_3 = sc_busy & sc_wr & (sc_bank == 3'd3);
+assign sc_ram_wen_4 = sc_busy & sc_wr & (sc_bank > 3'd3);
 
 wire sc_read_valid = sc_rd_done;
 wire sc_write_finish = sc_wr_last;
