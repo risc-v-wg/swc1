@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>JASA-1 環境モニタ</title>
+<style>
+  :root {
+    --bg: #eef3f9; --text: #1b2a3a; --muted: #5d6b7a; --card: #fff;
+    --navy: #133a6b; --line: #d7dee8;
+    --in-head: #dff1dc; --in-line: #9fd197;
+    --diff-head: #fdf0d2; --diff-line: #f0cf86;
+    --out-head: #dceaf9; --out-line: #9cc2ea;
+    --neg: #1f66c9; --pos: #d23b2a;
+    --ok: #2f9e44; --warn: #e8590c;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: "Noto Sans JP", "Hiragino Sans", "Yu Gothic UI", "Meiryo", sans-serif;
+  }
+  header {
+    background: var(--navy); color: #fff; padding: 18px 24px;
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 20px;
+  }
+  header h1 { margin: 0; font-size: 28px; letter-spacing: .02em; }
+  header .sub { opacity: .85; font-size: 15px; }
+  header .clock { margin-left: auto; font-variant-numeric: tabular-nums; font-size: 18px; }
+  main {
+    max-width: 1200px; margin: 24px auto; padding: 0 16px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px;
+  }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 2px solid var(--line); border-radius: 14px;
+    overflow: hidden; display: flex; flex-direction: column;
+  }
+  .card h2 { margin: 0; padding: 14px 18px 10px; font-size: 21px; text-align: center; }
+  .card h2 small { display: block; font-size: 13px; font-weight: normal; color: var(--muted); margin-top: 2px; }
+  .indoor  { border-color: var(--in-line); }   .indoor h2  { background: var(--in-head); }
+  .diff    { border-color: var(--diff-line); } .diff h2    { background: var(--diff-head); }
+  .outdoor { border-color: var(--out-line); }  .outdoor h2 { background: var(--out-head); }
+  .rows { padding: 8px 18px 4px; flex: 1; }
+  .row {
+    display: grid; grid-template-columns: 34px 1fr auto; align-items: center;
+    padding: 14px 0; border-bottom: 1px solid var(--line);
+  }
+  .row:last-child { border-bottom: 0; }
+  .row .ic { font-size: 24px; line-height: 1; }
+  .row .label { font-size: 17px; color: var(--muted); }
+  .row .val { font-size: 34px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: right; }
+  .row .val .u { font-size: 16px; font-weight: 500; color: var(--muted); margin-left: 4px; }
+  .diff .val.neg { color: var(--neg); }
+  .diff .val.pos { color: var(--pos); }
+  .wx { display: flex; align-items: center; gap: 12px; padding: 12px 18px 0; min-height: 64px; }
+  .wx .big { font-size: 44px; line-height: 1; }
+  .wx .txt { font-size: 18px; font-weight: 600; }
+  .wx .loc { font-size: 13px; color: var(--muted); }
+  .foot {
+    padding: 10px 18px; font-size: 13px; color: var(--muted);
+    border-top: 1px solid var(--line); background: #fafbfd; min-height: 40px;
+  }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; vertical-align: 0; background: #bbb; }
+  .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px #2f9e4433; }
+  .dot.warn { background: var(--warn); }
+  .stale .val { opacity: .4; }
+  .err { color: var(--warn); }
+  .note { max-width: 1200px; margin: 0 auto 24px; padding: 0 16px; font-size: 13px; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <h1>JASA-1 環境モニタ</h1>
+  <span class="sub">室内センサ (UDP) と外部の天気情報を比較</span>
+  <span class="clock" id="clock">--:--:--</span>
+</header>
+
+<main>
+  <section class="card indoor" id="indoorCard">
+    <h2>室内 (JASA-1)<small>センサ情報 / UDP</small></h2>
+    <div class="rows">
+      <div class="row"><span class="ic">🌡️</span><span class="label">温度</span><span class="val" id="in-temp">--<span class="u">℃</span></span></div>
+      <div class="row"><span class="ic">⏲️</span><span class="label">気圧</span><span class="val" id="in-press">--<span class="u">hPa</span></span></div>
+      <div class="row"><span class="ic">💧</span><span class="label">湿度</span><span class="val" id="in-hum">--<span class="u">%</span></span></div>
+    </div>
+    <div class="foot" id="in-status"><span class="dot"></span>UDP 受信待ち…</div>
+  </section>
+
+  <section class="card diff">
+    <h2>差分<small>室内 − 外部</small></h2>
+    <div class="rows">
+      <div class="row"><span class="ic">🌡️</span><span class="label">温度差</span><span class="val" id="d-temp">--<span class="u">℃</span></span></div>
+      <div class="row"><span class="ic">⏲️</span><span class="label">気圧差</span><span class="val" id="d-press">--<span class="u">hPa</span></span></div>
+      <div class="row"><span class="ic">💧</span><span class="label">湿度差</span><span class="val" id="d-hum">--<span class="u">%</span></span></div>
+    </div>
+    <div class="foot" id="d-status">両方のデータがそろうと表示します</div>
+  </section>
+
+  <section class="card outdoor">
+    <h2>外部<small id="out-provider">ネットの天気情報</small></h2>
+    <div class="wx">
+      <span class="big" id="out-icon">❔</span>
+      <div><div class="txt" id="out-weather">取得中…</div><div class="loc" id="out-loc"></div></div>
+    </div>
+    <div class="rows">
+      <div class="row"><span class="ic">🌡️</span><span class="label">気温</span><span class="val" id="out-temp">--<span class="u">℃</span></span></div>
+      <div class="row"><span class="ic">⏲️</span><span class="label">気圧</span><span class="val" id="out-press">--<span class="u">hPa</span></span></div>
+      <div class="row"><span class="ic">💧</span><span class="label">湿度</span><span class="val" id="out-hum">--<span class="u">%</span></span></div>
+    </div>
+    <div class="foot" id="out-status"></div>
+  </section>
+</main>
+<p class="note" id="note"></p>
+
+<script>
+const ICONS = { sunny: "☀️", partly: "⛅", cloudy: "☁️", rain: "🌧️", snow: "❄️", thunder: "⛈️", unknown: "❔" };
+const UNITS = { temp: "℃", press: "hPa", hum: "%" };
+const DIGITS = { temp: 1, press: 1, hum: 1 };
+
+const $ = id => document.getElementById(id);
+const hhmmss = t => new Date(t * 1000).toLocaleTimeString("ja-JP", { hour12: false });
+const hhmm = t => new Date(t * 1000).toLocaleTimeString("ja-JP", { hour: "2-digit", minute: "2-digit" });
+const num = v => typeof v === "number" && isFinite(v);
+
+function setVal(id, key, v, signed) {
+  const el = $(id);
+  let s = "--";
+  el.classList.remove("neg", "pos");
+  if (num(v)) {
+    s = v.toFixed(DIGITS[key]);
+    if (signed) {
+      if (Number(s) > 0) { s = "+" + s; el.classList.add("pos"); }
+      else if (Number(s) < 0) { el.classList.add("neg"); }
+    }
+  }
+  el.innerHTML = s + '<span class="u">' + UNITS[key] + "</span>";
+}
+
+function render(d) {
+  const now = d.now;
+  const cfg = d.config || {};
+  const ind = d.indoor, out = d.outdoor;
+
+  // Indoor
+  const stale = !ind || now - ind.time > (cfg.stale || 10);
+  for (const k of ["temp", "press", "hum"]) setVal("in-" + k, k, ind && ind[k]);
+  $("indoorCard").classList.toggle("stale", !!ind && stale);
+  let st;
+  if (!ind) {
+    st = '<span class="dot"></span>UDP ポート ' + (cfg.udp_port ?? "") + " で受信待ち…";
+  } else if (stale) {
+    st = '<span class="dot warn"></span>データ途絶 (最終受信 ' + hhmmss(ind.time) + ", " + ind.source + ")";
+  } else {
+    st = '<span class="dot ok"></span>受信中 ' + hhmmss(ind.time) + " from " + ind.source;
+  }
+  st += " · 受信 " + d.indoor_count + " 件";
+  if (d.indoor_errors) st += ' · <span class="err" title="' + escapeHtml(d.last_error || "") + '">不正 ' + d.indoor_errors + " 件</span>";
+  $("in-status").innerHTML = st;
+
+  // Outdoor
+  if (out) {
+    for (const k of ["temp", "press", "hum"]) setVal("out-" + k, k, out[k]);
+    $("out-icon").textContent = ICONS[out.icon] || ICONS.unknown;
+    $("out-weather").textContent = out.weather || "天気: 不明";
+    $("out-loc").textContent = out.location;
+    $("out-provider").textContent = "ネットの天気情報 / " + out.provider;
+    $("out-status").innerHTML = "観測 " + hhmm(out.obs_time) + " · 取得 " + hhmmss(out.fetched) +
+      (d.outdoor_error ? ' · <span class="err">更新失敗: ' + escapeHtml(d.outdoor_error) + "</span>" : "");
+  } else {
+    $("out-weather").textContent = d.outdoor_error ? "取得できません" : "取得中…";
+    $("out-status").innerHTML = d.outdoor_error ? '<span class="err">' + escapeHtml(d.outdoor_error) + "</span>" : "";
+  }
+
+  // Difference (indoor - outdoor)
+  for (const k of ["temp", "press", "hum"]) {
+    const a = ind && !stale ? ind[k] : undefined, b = out && out[k];
+    setVal("d-" + k, k, num(a) && num(b) ? a - b : undefined, true);
+  }
+  $("d-status").textContent = ind && !stale && out
+    ? "プラス = 室内が高い / マイナス = 室内が低い"
+    : "両方のデータがそろうと表示します";
+
+  $("note").textContent = "外部の気圧: " + (cfg.pressure === "sea" ? "海面気圧" : "現地気圧") +
+    "。室内センサの値 (絶対気圧) と比較しています。";
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function poll() {
+  try {
+    const r = await fetch("/api/data", { cache: "no-store" });
+    render(await r.json());
+  } catch (e) {
+    $("in-status").innerHTML = '<span class="dot warn"></span><span class="err">サーバに接続できません</span>';
+  }
+}
+
+setInterval(() => { $("clock").textContent = new Date().toLocaleTimeString("ja-JP", { hour12: false }); }, 250);
+poll();
+setInterval(poll, 1000);
+</script>
+</body>
+</html>

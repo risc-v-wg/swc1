@@ -1,0 +1,215 @@
+################################################################################
+# micro T-Kernel 3 for JASA1 / SWC1 (RV32I) -- PLUS the ENC424J600 + lwIP
+# loopback/UDP-echo demo running as one additional task alongside it.
+#
+# This is Makefile.swc1 (see that file for the baseline kernel-only build)
+# extended with:
+#   - lwIP core sources (from ether/lwip via Filelists.mk)
+#   - the ENC424J600 driver + JASA1 SPI/time drivers + lwIP netif glue,
+#     reused as-is from ether/lwip_port (no changes to those files)
+#   - ether_task/*.c: the micro-T-Kernel-side glue (task wrapper, lwipopts.h,
+#     arch/cc.h, a tiny printf() and string.h shim -- see those files for why
+#     each exists)
+#   - ether_task/usermain_ether.c in place of kernel/usermain/usermain.c,
+#     which creates the ether_task alongside the existing sender/receiver
+#     demo tasks
+#
+# Usage:
+#   make -f Makefile.swc1_ether          -- build mtkernel_swc1_ether.elf
+#   make -f Makefile.swc1_ether clean
+#
+# Override ETHER_DIR / LWIPDIR if ether/ is checked out somewhere else:
+#   make -f Makefile.swc1_ether ETHER_DIR=/path/to/ether/lwip_port LWIPDIR=/path/to/ether/lwip/src
+################################################################################
+
+TARGET_MACRO := _IOTE_SWC1_
+EXE          ?= mtkernel_swc1_ether
+SRCDIR       := mtkernel_3_for_swc1
+BUILDDIR     ?= build_swc1_ether
+LDSCRIPT     ?= $(SRCDIR)/etc/linker/iote_swc1/tkernel_map.ld
+
+ETHER_DIR    ?= lwip_port
+LWIPDIR      ?= lwip/src
+SENSOR_DIR   ?= sensor
+
+CROSS        ?= riscv32-unknown-elf-
+GCC          := $(CROSS)gcc
+LINK         := $(CROSS)gcc
+OBJCOPY      := $(CROSS)objcopy
+SIZE         := $(CROSS)size
+
+ARCH         := -march=rv32i_zicsr -mabi=ilp32 -mstrict-align
+OPT          := -O0 -g3
+WARN         := -Wall -Wextra
+
+EXTRA_DEFS   ?=
+
+# Sensor sender settings (lwip_port/app/sensor_send.c). SENSOR_DEST_IP
+# is the PC running sensor_monitor.py (default: subnet broadcast);
+# SENSOR_FORMAT is 0=json 1=kv 2=csv 3=bin, as in sensor_sim.py --format.
+#   make -f Makefile.swc1_ether SENSOR_DEST_IP=192.168.0.10 SENSOR_FORMAT=3
+SENSOR_DEST_IP   ?= 192.168.0.255
+SENSOR_DEST_PORT ?= 5005
+SENSOR_FORMAT    ?= 0
+SENSOR_DEFS  := -DSENSOR_DEST_IP=\"$(SENSOR_DEST_IP)\" \
+                -DSENSOR_DEST_PORT=$(SENSOR_DEST_PORT) \
+                -DSENSOR_FORMAT=$(SENSOR_FORMAT)
+
+CFLAGS  := $(ARCH) $(OPT) $(WARN) -ffreestanding -std=gnu11 \
+           -D$(TARGET_MACRO) \
+           -DUSE_PTMR=0 \
+           $(EXTRA_DEFS) \
+           $(SENSOR_DEFS) \
+           -I$(SRCDIR)/include \
+           -I$(SRCDIR)/config \
+           -I$(SRCDIR)/kernel/knlinc \
+           -Iether_task \
+           -I$(ETHER_DIR)/drivers \
+           -I$(ETHER_DIR)/netif \
+           -I$(ETHER_DIR)/app \
+           -I$(SENSOR_DIR) \
+           -I$(LWIPDIR)/include
+
+ASFLAGS := $(ARCH) $(OPT) -ffreestanding \
+           -x assembler-with-cpp \
+           -D$(TARGET_MACRO) \
+           -I$(SRCDIR)/include \
+           -I$(SRCDIR)/config \
+           -I$(SRCDIR)/kernel/knlinc
+
+LFLAGS  := $(ARCH) -nostartfiles -nostdlib \
+           -T $(LDSCRIPT)
+
+# --------------------------------------------------------------------------
+# Source files
+# --------------------------------------------------------------------------
+
+# Assembly (shared CPU core)
+S_SRCS := \
+  $(SRCDIR)/kernel/sysdepend/cpu/core/rv32i/dispatch.S \
+  $(SRCDIR)/kernel/sysdepend/cpu/core/rv32i/reset_hdl.S
+
+# C -- CPU core
+C_SRCS := \
+  $(SRCDIR)/kernel/sysdepend/cpu/core/rv32i/cpu_cntl.c \
+  $(SRCDIR)/kernel/sysdepend/cpu/core/rv32i/interrupt.c \
+  $(SRCDIR)/kernel/sysdepend/cpu/core/rv32i/exc_hdr.c
+
+# C -- JASA1 board layer
+C_SRCS += \
+  $(SRCDIR)/kernel/sysdepend/iote_swc1/hw_setting.c \
+  $(SRCDIR)/kernel/sysdepend/iote_swc1/cpu_clock.c \
+  $(SRCDIR)/kernel/sysdepend/iote_swc1/devinit.c \
+  $(SRCDIR)/kernel/sysdepend/iote_swc1/power_save.c
+
+# C -- kernel tkernel layer (note: kernel/usermain is deliberately NOT
+# wildcarded here -- ether_task/usermain_ether.c replaces it)
+C_SRCS += \
+  $(wildcard $(SRCDIR)/kernel/tkernel/*.c) \
+  $(wildcard $(SRCDIR)/kernel/sysinit/*.c) \
+  $(wildcard $(SRCDIR)/kernel/inittask/*.c) \
+  $(wildcard $(SRCDIR)/kernel/tstdlib/*.c)
+
+# C -- device drivers (optional)
+C_SRCS += $(wildcard $(SRCDIR)/device/ser/*.c)
+
+# C -- libraries
+C_SRCS += \
+  $(SRCDIR)/lib/libtk/sysdepend/cpu/core/rv32i/int_rv32i.c \
+  $(SRCDIR)/lib/libtk/sysdepend/cpu/core/rv32i/wusec_rv32i.c \
+  $(wildcard $(SRCDIR)/lib/libtk/*.c) \
+  $(SRCDIR)/lib/libtm/sysdepend/iote_swc1/tm_com.c \
+  $(wildcard $(SRCDIR)/lib/libtm/*.c)
+
+# C -- our usermain (replaces kernel/usermain/usermain.c)
+C_SRCS += ether_task/usermain_ether.c
+
+# C -- ether_task glue (task wrapper, printf/string.h shims)
+C_SRCS += \
+  ether_task/ether_task.c \
+  ether_task/ether_wdt.c \
+  ether_task/ether_printf.c \
+  ether_task/ether_libc_shim.c
+
+# C -- JASA1 SPI/time drivers + ENC424J600 driver + lwIP netif glue, reused
+# from ether/lwip_port (swc1_spi.c changed to drive GPIO[0] by read-modify-
+# write, leaving GPIO[1..3] to the I2C driver), + the sensor UDP sender app
+C_SRCS += \
+  $(ETHER_DIR)/drivers/swc1_time.c \
+  $(ETHER_DIR)/drivers/swc1_spi.c \
+  $(ETHER_DIR)/drivers/enc424j600.c \
+  $(ETHER_DIR)/netif/enc424j600if.c \
+  $(ETHER_DIR)/app/sensor_send.c
+
+# C -- BME280 over bit-banged I2C (ported from pmodnic_test/sensor)
+C_SRCS += \
+  $(SENSOR_DIR)/gpio_ctrl.c \
+  $(SENSOR_DIR)/i2c_ctrl.c \
+  $(SENSOR_DIR)/bme280_ctrl.c \
+  $(SENSOR_DIR)/sensor.c
+
+# C -- lwIP core (protocol-independent + IPv4)
+include $(LWIPDIR)/Filelists.mk
+C_SRCS += $(COREFILES) $(CORE4FILES) $(LWIPDIR)/netif/ethernet.c
+
+# --------------------------------------------------------------------------
+# Build rules
+# --------------------------------------------------------------------------
+
+OBJS := $(patsubst $(SRCDIR)/%.c,  $(BUILDDIR)/mtkernel_3_for_swc1/%.o, $(filter $(SRCDIR)/%,$(C_SRCS)))
+OBJS += $(patsubst $(SRCDIR)/%.S,  $(BUILDDIR)/mtkernel_3_for_swc1/%.o, $(S_SRCS))
+OBJS += $(patsubst ether_task/%.c, $(BUILDDIR)/ether_task/%.o, $(filter ether_task/%,$(C_SRCS)))
+OBJS += $(patsubst $(ETHER_DIR)/%.c, $(BUILDDIR)/ether/%.o, $(filter $(ETHER_DIR)/%,$(C_SRCS)))
+OBJS += $(patsubst $(LWIPDIR)/%.c, $(BUILDDIR)/lwip/%.o, $(filter $(LWIPDIR)/%,$(C_SRCS)))
+OBJS += $(patsubst $(SENSOR_DIR)/%.c, $(BUILDDIR)/sensor/%.o, $(filter $(SENSOR_DIR)/%,$(C_SRCS)))
+
+all: $(EXE).elf hex
+	$(SIZE) $(EXE).elf
+
+$(EXE).elf: $(OBJS)
+	$(LINK) $(LFLAGS) -Wl,-Map,$(EXE).map -o $@ $^ -lgcc
+
+bin: $(EXE).elf
+	$(OBJCOPY) -O binary $< $(EXE).bin
+
+# Post-build conversion: .bin2 (raw), .hex (od word-hex), .2.hex (JASA1
+# UART-monitor upload image, .hex + zero-pad trailer), .bhex (CSV byte-hex,
+# "0x%02x," 16/line -- the flash-programmer tool's input format).
+ZEROFILE ?= zero
+
+hex: $(EXE).elf
+	$(OBJCOPY) -O binary $< $(EXE).bin2
+	od -An -tx4 -w4 -v $(EXE).bin2 > $(EXE).hex
+	cat $(EXE).hex $(ZEROFILE) > $(EXE).2.hex
+	hexdump -v -e '16/1 "0x%02x," "\n"' $(EXE).bin2 > $(EXE).bhex
+
+$(BUILDDIR)/mtkernel_3_for_swc1/%.o: $(SRCDIR)/%.c
+	@mkdir -p $(@D)
+	$(GCC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+$(BUILDDIR)/mtkernel_3_for_swc1/%.o: $(SRCDIR)/%.S
+	@mkdir -p $(@D)
+	$(GCC) $(ASFLAGS) -MMD -MP -c -o $@ $<
+
+$(BUILDDIR)/ether_task/%.o: ether_task/%.c
+	@mkdir -p $(@D)
+	$(GCC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+$(BUILDDIR)/ether/%.o: $(ETHER_DIR)/%.c
+	@mkdir -p $(@D)
+	$(GCC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+$(BUILDDIR)/lwip/%.o: $(LWIPDIR)/%.c
+	@mkdir -p $(@D)
+	$(GCC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+$(BUILDDIR)/sensor/%.o: $(SENSOR_DIR)/%.c
+	@mkdir -p $(@D)
+	$(GCC) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+-include $(OBJS:.o=.d)
+
+clean:
+	rm -rf $(BUILDDIR) $(EXE).elf $(EXE).bin $(EXE).bin2 $(EXE).hex $(EXE).2.hex $(EXE).bhex $(EXE).map
+
+.PHONY: all bin hex clean

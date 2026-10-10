@@ -1,0 +1,31 @@
+################################################################################
+# micro T-Kernel 3 for JASA1 / SWC1 (RV32I) + ether_task -- XIP flash + PSRAM
+# split-memory variant of Makefile.swc1_ether.
+#
+# Same sources as Makefile.swc1_ether; only the memory layout differs:
+#   - code (.boot_entry/.vector/.text/.rodata) executes in place from cs0
+#     QSPI flash, 0x0000_0000+
+#   - data (.data/.noinit/.bss/stack/heap) lives in cs1 QSPI PSRAM,
+#     0x0100_0000+
+# See mtkernel_3_for_swc1/etc/linker/iote_swc1/tkernel_map_flash.ld for the full
+# layout and the board-strap requirement (init_qspicmd=1, so cs0 defaults
+# to Flash read/write commands at reset).
+#
+# Usage:
+#   make -f Makefile.swc1_ether_flash          -- build mtkernel_swc1_ether_flash.elf
+#   make -f Makefile.swc1_ether_flash clean
+#
+# Override ETHER_DIR / LWIPDIR the same way as Makefile.swc1_ether if
+# ether/ is checked out somewhere else.
+################################################################################
+
+EXE        := mtkernel_swc1_ether_flash
+BUILDDIR   := build_swc1_ether_flash
+LDSCRIPT   := mtkernel_3_for_swc1/etc/linker/iote_swc1/tkernel_map_flash.ld
+
+# Tells sysdef.h to point RAM_START/RAM_SIZE (hence knl_lowmem_top/limit,
+# the Imalloc heap bounds) at the RAM region (0x01000000+), matching
+# tkernel_map_flash.ld -- see sysdef.h for why this must stay in sync.
+EXTRA_DEFS := -DJASA1_FLASH_RAM_SPLIT
+
+include Makefile.swc1_ether
