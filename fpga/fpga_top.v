@@ -238,11 +238,12 @@ wire spi_miso = init_qspicmd; // input
 
 // uart2 IO selector
 
-`ifdef FPGA_MODE
 wire rx2 = init_latency[0]; // input
 wire tx2; // output
 wire uart2_io_en; // output
+wire ext_uart2_interrpt_1shot;
 
+`ifdef FPGA_MODE
 assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
 `else // FPGA_MODE
 wire [1:0] init_latency = init_latency_i;
@@ -492,6 +493,7 @@ scratch_1r1w scratch_1r1w_3 (
 	.ram_wdata(sc_ram_wdata),
 	.ram_wen(sc_ram_wen_3)
 	);
+`endif // FPGA_MODE
 
 scratch2_1r1w scratch2_1r1w (
 	.clk(clk),
@@ -501,7 +503,6 @@ scratch2_1r1w scratch2_1r1w (
 	.ram_wdata(sc_ram_wdata),
 	.ram_wen(sc_ram_wen_4)
 	);
-`endif // FPGA_MODE
 
 io_led io_led (
 	.clk(clk),
@@ -572,6 +573,7 @@ interrupter interrupter (
 	.rst_n(rst_n),
 	.interrupt_0(interrupt_0),
 	.ext_uart_interrpt_1shot(ext_uart_interrpt_1shot),
+        .ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
 	.csr_rmie(csr_rmie),
 	.csr_meie(csr_meie),
 	.g_interrupt_1shot(g_interrupt_1shot),
