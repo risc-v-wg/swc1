@@ -17,6 +17,7 @@
 #include "sensor_send.h"
 #include "sensor.h"
 #include "gpio_ctrl.h"
+#include "ether_task.h"
 
 int printf(const char *fmt, ...);
 
@@ -208,6 +209,7 @@ static void send_one(void)
                (unsigned)s_seq, (int)err);
         return;
     }
+    ether_task_progress++;
     /* Same console echo as sensor_sim.py: the payload itself, as hex for bin. */
     printf("sensor_send: #%u ", (unsigned)s_seq);
     for (u16_t i = 0; i < s_len; i++) {

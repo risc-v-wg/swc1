@@ -41,4 +41,12 @@ int enc424j600_recv(uint8_t *buf, int buflen);
  * Returns 0 on success, -1 on a MAC-reported transmit error. */
 int enc424j600_send(const uint8_t *buf, int len);
 
+/* Diagnostic counters for ether_wdt.c: frames sent OK / failed, frames
+ * received, and the most ECON1 polls one send has waited for TXRTS to
+ * clear (cleared by the reader). */
+extern volatile uint32_t enc424j600_tx_ok;
+extern volatile uint32_t enc424j600_tx_err;
+extern volatile uint32_t enc424j600_rx_cnt;
+extern volatile uint32_t enc424j600_tx_wait_max;
+
 #endif /* ENC424J600_H */

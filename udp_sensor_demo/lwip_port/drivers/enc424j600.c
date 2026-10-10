@@ -37,6 +37,11 @@
 static uint16_t s_next_pkt_ptr;
 static int s_link_was_up;
 
+volatile uint32_t enc424j600_tx_ok;
+volatile uint32_t enc424j600_tx_err;
+volatile uint32_t enc424j600_rx_cnt;
+volatile uint32_t enc424j600_tx_wait_max;
+
 static uint16_t rcru(uint8_t addr)
 {
     uint8_t tx[4] = { OP_RCRU, addr, 0xFF, 0xFF };
@@ -289,6 +294,7 @@ int enc424j600_recv(uint8_t *buf, int buflen)
     }
     swc1_spi_select(0);
 
+    enc424j600_rx_cnt++;
     s_next_pkt_ptr = new_next_ptr;
     uint16_t new_tail = (s_next_pkt_ptr == RX_BUF_START) ? RX_BUF_END : (uint16_t)(s_next_pkt_ptr - 2);
     wcru(REG_ERXTAIL, new_tail);
@@ -365,8 +371,11 @@ int enc424j600_send(const uint8_t *buf, int len)
          * it when the transmit completes (or aborts). */
     }
     int waited = start_guard - guard;
+    if ((uint32_t)waited > enc424j600_tx_wait_max)
+        enc424j600_tx_wait_max = (uint32_t)waited;
     if (guard <= 0) {
         printf("enc424j600: TX %d bytes -- TXRTS never cleared (SPI/PHY stuck?)\n", len);
+        enc424j600_tx_err++;
         return -1;
     }
 
@@ -381,8 +390,10 @@ int enc424j600_send(const uint8_t *buf, int len)
 #endif
     if (txstat & 0x0700u) { /* LATECOL | MAXCOL | EXDEFER (half-duplex only) */
         printf("enc424j600: TX %d bytes -- ETXSTAT error 0x%04x\n", len, (unsigned)txstat);
+        enc424j600_tx_err++;
         return -1;
     }
 
+    enc424j600_tx_ok++;
     return 0;
 }

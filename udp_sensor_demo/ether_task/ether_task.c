@@ -22,8 +22,9 @@
  * sensor_send.c), and the loop hangs on purpose ETHER_HANG_INTERVAL_MS (40 s) after every
  * (re)start, which stops the blinking until the watchdog restarts it.
  *
- * Watchdog: ether_task bumps ether_task_heartbeat every loop iteration;
- * ether_wdt_task (ether_wdt.c) kills and restarts it if that stops for
+ * Watchdog: ether_task bumps ether_task_heartbeat every loop iteration and
+ * sensor_send.c bumps ether_task_progress on every datagram sent;
+ * ether_wdt_task (ether_wdt.c) kills and restarts it if either stops for
  * 10 s. On a restart (stacd != 0) the lwIP globals that lwip_init() does not
  * clear are reset first -- see lwip_reset_for_restart().
  *
@@ -65,6 +66,20 @@ static UW now_ms(void)
 }
 
 volatile UW ether_task_heartbeat;
+volatile UW ether_task_progress;
+volatile UW ether_task_phase;
+volatile UW ether_task_max_cycles[ETHER_PHASE_COUNT];
+
+/* Run one step of the main loop, recording it in ether_task_phase and
+ * ether_task_max_cycles for ether_wdt_task's stall report. */
+#define ETHER_PHASE(ph, call) do {                                  \
+        ether_task_phase = (ph);                                    \
+        uint32_t c0_ = swc1_cycles();                               \
+        call;                                                       \
+        uint32_t d_ = (uint32_t)(swc1_cycles() - c0_);              \
+        if (d_ > ether_task_max_cycles[ph])                         \
+            ether_task_max_cycles[ph] = d_;                         \
+    } while (0)
 
 /*
  * lwip_init() re-initialises the heap and the memp pools, but not the
@@ -115,6 +130,7 @@ void ether_task(INT stacd, void *exinf)
     ip4_addr_t ipaddr, netmask, gw;
 
     (void)exinf;
+    ether_task_phase = ETHER_PHASE_COUNT; /* "init" in ether_wdt's report */
     ether_task_heartbeat++;
     if (stacd != 0) {
         printf("ether_task: restarted by watchdog (#%d), resetting lwIP\n", (int)stacd);
@@ -162,7 +178,7 @@ void ether_task(INT stacd, void *exinf)
         }
 #endif
 
-        enc424j600if_poll(&s_netif);
+        ETHER_PHASE(ETHER_PHASE_POLL, enc424j600if_poll(&s_netif));
 
         int is_link_up = netif_is_link_up(&s_netif);
         if (is_link_up != was_link_up) {
@@ -170,14 +186,14 @@ void ether_task(INT stacd, void *exinf)
             was_link_up = is_link_up;
         }
 
-        sys_check_timeouts();
+        ETHER_PHASE(ETHER_PHASE_TIMEOUTS, sys_check_timeouts());
 
-        sensor_send_poll();
+        ETHER_PHASE(ETHER_PHASE_SEND, sensor_send_poll());
 
         /* Yield to other tasks (sender/receiver demo tasks, init task) each
          * iteration -- this is what actually makes the ethernet loopback
          * demo coexist with the rest of micro T-Kernel instead of
          * monopolizing the single RV32I core. */
-        tk_dly_tsk(50);
+        ETHER_PHASE(ETHER_PHASE_DELAY, tk_dly_tsk(50));
     }
 }
