@@ -1,8 +1,16 @@
 #!/bin/bash
-# usage: ./cmpl_asm.sh [sim]
+# usage: ./cmpl_asm.sh [name] [sim]    (name default : det_test_asm)
 NAME=det_test_asm
+SIM=
+for arg in "$@"; do
+    if [ "$arg" == "sim" ]; then
+        SIM=1
+    else
+        NAME=${arg%.s}
+    fi
+done
 DEF=
-if [ "$1" == "sim" ]; then
+if [ -n "$SIM" ]; then
     DEF="--defsym SIM=1"
     NAME_OUT=${NAME}_sim
 else
