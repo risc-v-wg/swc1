@@ -20,6 +20,7 @@
 	.equ LP2,       200
 	.equ UART_OUT,  0xc000fc00
 	.equ LED,       0xc000fe00
+	.equ FRC_BASE,  0xc000f800    # +0:val_lo +4:val_hi +0x10:ctrl
 
 	.text
 	.globl _start
@@ -31,6 +32,11 @@ _start:
 # main
 #---------------------------------------------------------------
 main:
+.ifndef SIM
+	li   t0, FRC_BASE         # frc : clear counter and start
+	li   t1, 3
+	sw   t1, 0x10(t0)
+.endif
 	# mat1[n] = sqrt(n+1)  n = 0 .. SIZE*SIZE-1
 	la   s0, mat1
 	li   s1, 1
@@ -71,7 +77,50 @@ main:
 	la   a0, cbuf
 	li   a2, 2
 	jal  uprint
+	jal  time_print
 	j    pass
+
+#---------------------------------------------------------------
+# time_print : stop frc and print 64bit counter value in hex
+#   "time = 0x" hhhhhhhh_llllllll CR LF   (SIM : always 0)
+#---------------------------------------------------------------
+time_print:
+.ifdef SIM
+	li   t1, 0
+	li   t2, 0
+.else
+	li   t0, FRC_BASE
+	sw   zero, 0x10(t0)       # stop counter (value is kept)
+	lw   t2, 0(t0)            # lo
+	lw   t1, 4(t0)            # hi
+.endif
+	la   a0, cbuf
+	la   t3, str_time
+	li   t4, 9
+1:	lbu  t5, 0(t3)            # copy "time = 0x"
+	sb   t5, 0(a0)
+	addi t3, t3, 1
+	addi a0, a0, 1
+	addi t4, t4, -1
+	bnez t4, 1b
+	li   t4, 16               # 16 hex digits, hi first
+2:	srli t5, t1, 28
+	slli t1, t1, 4
+	srli t6, t2, 28
+	or   t1, t1, t6
+	slli t2, t2, 4
+	addi t5, t5, '0'
+	li   t6, '9'
+	ble  t5, t6, 3f
+	addi t5, t5, 'a'-'9'-1
+3:	sb   t5, 0(a0)
+	addi a0, a0, 1
+	addi t4, t4, -1
+	bnez t4, 2b
+	la   a0, cbuf
+	li   a1, 25
+	li   a2, 2
+	j    uprint
 
 #---------------------------------------------------------------
 # double det_cal(a0:mat, a1:s)
@@ -858,6 +907,7 @@ fsqrt:
 #---------------------------------------------------------------
 str_mat1:	.byte 'm','a','t','1',0x0a,0
 str_det:	.ascii "det = "
+str_time:	.ascii "time = 0x"
 .ifdef SIM
 str_crlf:	.byte 0x0d,0x0a
 str_sp:		.byte 0x20

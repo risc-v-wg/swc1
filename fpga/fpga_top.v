@@ -345,11 +345,12 @@ wire [15:2] dma_io_radr = dma_io_radr_en_u ? dma_io_radr_u : dma_io_radr_c;
 `ifdef FPGA_MODE
 clk_wiz_0 clk_wiz_0 (
 	.clk_out1(clk),
+	.clk_out2(mclk),
 	.reset(~rst_n),
 	.locked(locked),
 	.clk_in1(clkin)
 	);
-wire mclk = clk;
+//wire mclk = clk;
 `else // FPGA_MODE
 assign clk = clkin;
 wire mclk = mclkin;
