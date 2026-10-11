@@ -13,6 +13,9 @@
 module fpga_top (
 	input clkin,
 	input rst_n,
+`ifndef FPGA_MODE
+	input mclkin,     // scratch RAM clock (asynchronous to clkin)
+`endif // FPGA_MODE
 
 	input interrupt_0,
 
@@ -153,99 +156,84 @@ wire [31:0] write_adr; // output
 wire [31:0] write_data; // output
 
 // scratch RAM (12KB, mapped at 0x03000000 via qspi_if; scratch2 64B at 0x03003000)
-// built from twelve 1024x8 scratch_1r1w banks; bank select / wen decode /
-// read data mux all live inside qspi_if, these wires are a straight passthrough
-wire [9:0] sc_ram_radr; // output
-wire [9:0] sc_ram_wadr; // output
-wire [7:0] sc_ram_wdata; // output
-wire sc_ram_wen_0; // output
-wire sc_ram_wen_1; // output
-wire sc_ram_wen_2; // output
-wire sc_ram_wen_3; // output
-wire sc_ram_wen_4; // output
-wire sc_ram_wen_5; // output
-wire sc_ram_wen_6; // output
-wire sc_ram_wen_7; // output
-wire sc_ram_wen_8; // output
-wire sc_ram_wen_9; // output
-wire sc_ram_wen_10; // output
-wire sc_ram_wen_11; // output
-wire sc_ram_wen_12; // output
-wire [7:0] sc_ram_rdata_0; // input
-wire [7:0] sc_ram_rdata_1; // input
-wire [7:0] sc_ram_rdata_2; // input
-wire [7:0] sc_ram_rdata_3; // input
-wire [7:0] sc_ram_rdata_4; // input
-wire [7:0] sc_ram_rdata_5; // input
-wire [7:0] sc_ram_rdata_6; // input
-wire [7:0] sc_ram_rdata_7; // input
-wire [7:0] sc_ram_rdata_8; // input
-wire [7:0] sc_ram_rdata_9; // input
-wire [7:0] sc_ram_rdata_10; // input
-wire [7:0] sc_ram_rdata_11; // input
-wire [7:0] sc_ram_rdata_12; // input
+// built from twelve 1024x8 banks + 4 scratch2 lanes, interleaved by byte lane
+// (bank b = group * 4 + lane, lane = byte address[1:0]) so a word access is one RAM cycle;
+// The RAMs run on mclk (mclkin). qspi_if (clk) hands every access over to
+// scratch_mif (mclk) with a toggle req/ack handshake; per lane address / data,
+// bank wen decode and read data mux live inside scratch_mif.
+wire sc_req; // output of qspi_if, toggle
+wire sc_wr;
+wire [1:0] sc_last;
+wire [13:0] sc_adr;
+wire [31:0] sc_wdata;
+wire sc_ack; // output of scratch_mif, toggle
+wire [31:0] sc_mrdata;
+wire [39:0] sc_ram_adr; // output, lane l : [l*10 +: 10]
+wire [31:0] sc_ram_wdata; // output, lane l : [l*8 +: 8]
+wire [15:0] sc_ram_wen; // output, bank b
+wire [127:0] sc_ram_rdata; // input, bank b : [b*8 +: 8]
 
-// outside sram i/f
+// outside sram i/f : sram_N is bank N (lane N % 4, group N / 4)
 `ifndef FPGA_MODE
-assign sram_gwen_0 = ~sc_ram_wen_0;
-assign sram_a_0 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_0 = sc_ram_wdata;
-assign sc_ram_rdata_0 = sram_q_0; // input
+assign sram_gwen_0 = ~sc_ram_wen[0];
+assign sram_a_0 = sc_ram_adr[9:0];
+assign sram_d_0 = sc_ram_wdata[7:0];
+assign sc_ram_rdata[7:0] = sram_q_0; // input
 
-assign sram_gwen_1 = ~sc_ram_wen_1;
-assign sram_a_1 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_1 = sc_ram_wdata;
-assign sc_ram_rdata_1 = sram_q_1; // input
+assign sram_gwen_1 = ~sc_ram_wen[1];
+assign sram_a_1 = sc_ram_adr[19:10];
+assign sram_d_1 = sc_ram_wdata[15:8];
+assign sc_ram_rdata[15:8] = sram_q_1; // input
 
-assign sram_gwen_2 = ~sc_ram_wen_2;
-assign sram_a_2 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_2 = sc_ram_wdata;
-assign sc_ram_rdata_2 = sram_q_2; // input
+assign sram_gwen_2 = ~sc_ram_wen[2];
+assign sram_a_2 = sc_ram_adr[29:20];
+assign sram_d_2 = sc_ram_wdata[23:16];
+assign sc_ram_rdata[23:16] = sram_q_2; // input
 
-assign sram_gwen_3 = ~sc_ram_wen_3;
-assign sram_a_3 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_3 = sc_ram_wdata;
-assign sc_ram_rdata_3 = sram_q_3; // input
+assign sram_gwen_3 = ~sc_ram_wen[3];
+assign sram_a_3 = sc_ram_adr[39:30];
+assign sram_d_3 = sc_ram_wdata[31:24];
+assign sc_ram_rdata[31:24] = sram_q_3; // input
 
-assign sram_gwen_4 = ~sc_ram_wen_4;
-assign sram_a_4 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_4 = sc_ram_wdata;
-assign sc_ram_rdata_4 = sram_q_4; // input
+assign sram_gwen_4 = ~sc_ram_wen[4];
+assign sram_a_4 = sc_ram_adr[9:0];
+assign sram_d_4 = sc_ram_wdata[7:0];
+assign sc_ram_rdata[39:32] = sram_q_4; // input
 
-assign sram_gwen_5 = ~sc_ram_wen_5;
-assign sram_a_5 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_5 = sc_ram_wdata;
-assign sc_ram_rdata_5 = sram_q_5; // input
+assign sram_gwen_5 = ~sc_ram_wen[5];
+assign sram_a_5 = sc_ram_adr[19:10];
+assign sram_d_5 = sc_ram_wdata[15:8];
+assign sc_ram_rdata[47:40] = sram_q_5; // input
 
-assign sram_gwen_6 = ~sc_ram_wen_6;
-assign sram_a_6 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_6 = sc_ram_wdata;
-assign sc_ram_rdata_6 = sram_q_6; // input
+assign sram_gwen_6 = ~sc_ram_wen[6];
+assign sram_a_6 = sc_ram_adr[29:20];
+assign sram_d_6 = sc_ram_wdata[23:16];
+assign sc_ram_rdata[55:48] = sram_q_6; // input
 
-assign sram_gwen_7 = ~sc_ram_wen_7;
-assign sram_a_7 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_7 = sc_ram_wdata;
-assign sc_ram_rdata_7 = sram_q_7; // input
+assign sram_gwen_7 = ~sc_ram_wen[7];
+assign sram_a_7 = sc_ram_adr[39:30];
+assign sram_d_7 = sc_ram_wdata[31:24];
+assign sc_ram_rdata[63:56] = sram_q_7; // input
 
-assign sram_gwen_8 = ~sc_ram_wen_8;
-assign sram_a_8 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_8 = sc_ram_wdata;
-assign sc_ram_rdata_8 = sram_q_8; // input
+assign sram_gwen_8 = ~sc_ram_wen[8];
+assign sram_a_8 = sc_ram_adr[9:0];
+assign sram_d_8 = sc_ram_wdata[7:0];
+assign sc_ram_rdata[71:64] = sram_q_8; // input
 
-assign sram_gwen_9 = ~sc_ram_wen_9;
-assign sram_a_9 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_9 = sc_ram_wdata;
-assign sc_ram_rdata_9 = sram_q_9; // input
+assign sram_gwen_9 = ~sc_ram_wen[9];
+assign sram_a_9 = sc_ram_adr[19:10];
+assign sram_d_9 = sc_ram_wdata[15:8];
+assign sc_ram_rdata[79:72] = sram_q_9; // input
 
-assign sram_gwen_10 = ~sc_ram_wen_10;
-assign sram_a_10 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_10 = sc_ram_wdata;
-assign sc_ram_rdata_10 = sram_q_10; // input
+assign sram_gwen_10 = ~sc_ram_wen[10];
+assign sram_a_10 = sc_ram_adr[29:20];
+assign sram_d_10 = sc_ram_wdata[23:16];
+assign sc_ram_rdata[87:80] = sram_q_10; // input
 
-assign sram_gwen_11 = ~sc_ram_wen_11;
-assign sram_a_11 = sc_ram_wadr; // same as sc_ram_radr
-assign sram_d_11 = sc_ram_wdata;
-assign sc_ram_rdata_11 = sram_q_11; // input
+assign sram_gwen_11 = ~sc_ram_wen[11];
+assign sram_a_11 = sc_ram_adr[39:30];
+assign sram_d_11 = sc_ram_wdata[31:24];
+assign sc_ram_rdata[95:88] = sram_q_11; // input
 `endif // FPGA_MODE
 
 // uart
@@ -361,8 +349,10 @@ clk_wiz_0 clk_wiz_0 (
 	.locked(locked),
 	.clk_in1(clkin)
 	);
+wire mclk = clk;
 `else // FPGA_MODE
 assign clk = clkin;
+wire mclk = mclkin;
 `endif // FPGA_MODE
 
 cpu_top cpu_top (
@@ -531,35 +521,13 @@ qspi_if qspi_if (
 	.write_finish(write_finish),
 	.write_adr(write_adr),
 	.write_data(write_data),
-	.sc_ram_radr(sc_ram_radr),
-	.sc_ram_wadr(sc_ram_wadr),
-	.sc_ram_wdata(sc_ram_wdata),
-	.sc_ram_wen_0(sc_ram_wen_0),
-	.sc_ram_wen_1(sc_ram_wen_1),
-	.sc_ram_wen_2(sc_ram_wen_2),
-	.sc_ram_wen_3(sc_ram_wen_3),
-	.sc_ram_wen_4(sc_ram_wen_4),
-	.sc_ram_wen_5(sc_ram_wen_5),
-	.sc_ram_wen_6(sc_ram_wen_6),
-	.sc_ram_wen_7(sc_ram_wen_7),
-	.sc_ram_wen_8(sc_ram_wen_8),
-	.sc_ram_wen_9(sc_ram_wen_9),
-	.sc_ram_wen_10(sc_ram_wen_10),
-	.sc_ram_wen_11(sc_ram_wen_11),
-	.sc_ram_wen_12(sc_ram_wen_12),
-	.sc_ram_rdata_0(sc_ram_rdata_0),
-	.sc_ram_rdata_1(sc_ram_rdata_1),
-	.sc_ram_rdata_2(sc_ram_rdata_2),
-	.sc_ram_rdata_3(sc_ram_rdata_3),
-	.sc_ram_rdata_4(sc_ram_rdata_4),
-	.sc_ram_rdata_5(sc_ram_rdata_5),
-	.sc_ram_rdata_6(sc_ram_rdata_6),
-	.sc_ram_rdata_7(sc_ram_rdata_7),
-	.sc_ram_rdata_8(sc_ram_rdata_8),
-	.sc_ram_rdata_9(sc_ram_rdata_9),
-	.sc_ram_rdata_10(sc_ram_rdata_10),
-	.sc_ram_rdata_11(sc_ram_rdata_11),
-	.sc_ram_rdata_12(sc_ram_rdata_12),
+	.sc_req(sc_req),
+	.sc_wr(sc_wr),
+	.sc_last(sc_last),
+	.sc_adr(sc_adr),
+	.sc_wdata(sc_wdata),
+	.sc_ack(sc_ack),
+	.sc_mrdata(sc_mrdata),
 	.dma_io_we(dma_io_we),
 	.dma_io_wadr(dma_io_wadr),
 	.dma_io_wdata(dma_io_wdata),
@@ -569,123 +537,182 @@ qspi_if qspi_if (
 	.dma_io_rdata(dma_io_rdata_in_5)
 	);
 
+// mclk domain reset : asynchronous assert, deassert synchronized to mclk
+reg mrst_n_m1;
+reg mrst_n;
+
+always @ (posedge mclk or negedge rst_n) begin
+	if (~rst_n) begin
+		mrst_n_m1 <= 1'b0;
+		mrst_n <= 1'b0;
+	end
+	else begin
+		mrst_n_m1 <= 1'b1;
+		mrst_n <= mrst_n_m1;
+	end
+end
+
+scratch_mif scratch_mif (
+	.mclk(mclk),
+	.mrst_n(mrst_n),
+	.sc_req(sc_req),
+	.sc_wr(sc_wr),
+	.sc_last(sc_last),
+	.sc_adr(sc_adr),
+	.sc_wdata(sc_wdata),
+	.sc_ack(sc_ack),
+	.sc_rdata(sc_mrdata),
+	.sc_ram_adr(sc_ram_adr),
+	.sc_ram_wdata(sc_ram_wdata),
+	.sc_ram_wen(sc_ram_wen),
+	.sc_ram_rdata(sc_ram_rdata)
+	);
+
 `ifdef FPGA_MODE
 scratch_1r1w scratch_1r1w_0 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_0),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_0)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[9:0]),
+	.ram_rdata(sc_ram_rdata[7:0]),
+	.ram_wadr(sc_ram_adr[9:0]),
+	.ram_wdata(sc_ram_wdata[7:0]),
+	.ram_wen(sc_ram_wen[0])
 	);
 
 scratch_1r1w scratch_1r1w_1 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_1),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_1)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[19:10]),
+	.ram_rdata(sc_ram_rdata[15:8]),
+	.ram_wadr(sc_ram_adr[19:10]),
+	.ram_wdata(sc_ram_wdata[15:8]),
+	.ram_wen(sc_ram_wen[1])
 	);
 
 scratch_1r1w scratch_1r1w_2 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_2),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_2)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[29:20]),
+	.ram_rdata(sc_ram_rdata[23:16]),
+	.ram_wadr(sc_ram_adr[29:20]),
+	.ram_wdata(sc_ram_wdata[23:16]),
+	.ram_wen(sc_ram_wen[2])
 	);
 
 scratch_1r1w scratch_1r1w_3 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_3),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_3)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[39:30]),
+	.ram_rdata(sc_ram_rdata[31:24]),
+	.ram_wadr(sc_ram_adr[39:30]),
+	.ram_wdata(sc_ram_wdata[31:24]),
+	.ram_wen(sc_ram_wen[3])
 	);
 
 scratch_1r1w scratch_1r1w_4 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_4),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_4)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[9:0]),
+	.ram_rdata(sc_ram_rdata[39:32]),
+	.ram_wadr(sc_ram_adr[9:0]),
+	.ram_wdata(sc_ram_wdata[7:0]),
+	.ram_wen(sc_ram_wen[4])
 	);
 
 scratch_1r1w scratch_1r1w_5 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_5),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_5)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[19:10]),
+	.ram_rdata(sc_ram_rdata[47:40]),
+	.ram_wadr(sc_ram_adr[19:10]),
+	.ram_wdata(sc_ram_wdata[15:8]),
+	.ram_wen(sc_ram_wen[5])
 	);
 
 scratch_1r1w scratch_1r1w_6 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_6),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_6)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[29:20]),
+	.ram_rdata(sc_ram_rdata[55:48]),
+	.ram_wadr(sc_ram_adr[29:20]),
+	.ram_wdata(sc_ram_wdata[23:16]),
+	.ram_wen(sc_ram_wen[6])
 	);
 
 scratch_1r1w scratch_1r1w_7 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_7),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_7)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[39:30]),
+	.ram_rdata(sc_ram_rdata[63:56]),
+	.ram_wadr(sc_ram_adr[39:30]),
+	.ram_wdata(sc_ram_wdata[31:24]),
+	.ram_wen(sc_ram_wen[7])
 	);
 
 scratch_1r1w scratch_1r1w_8 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_8),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_8)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[9:0]),
+	.ram_rdata(sc_ram_rdata[71:64]),
+	.ram_wadr(sc_ram_adr[9:0]),
+	.ram_wdata(sc_ram_wdata[7:0]),
+	.ram_wen(sc_ram_wen[8])
 	);
 
 scratch_1r1w scratch_1r1w_9 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_9),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_9)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[19:10]),
+	.ram_rdata(sc_ram_rdata[79:72]),
+	.ram_wadr(sc_ram_adr[19:10]),
+	.ram_wdata(sc_ram_wdata[15:8]),
+	.ram_wen(sc_ram_wen[9])
 	);
 
 scratch_1r1w scratch_1r1w_10 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_10),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_10)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[29:20]),
+	.ram_rdata(sc_ram_rdata[87:80]),
+	.ram_wadr(sc_ram_adr[29:20]),
+	.ram_wdata(sc_ram_wdata[23:16]),
+	.ram_wen(sc_ram_wen[10])
 	);
 
 scratch_1r1w scratch_1r1w_11 (
-	.clk(clk),
-	.ram_radr(sc_ram_radr),
-	.ram_rdata(sc_ram_rdata_11),
-	.ram_wadr(sc_ram_wadr),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_11)
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[39:30]),
+	.ram_rdata(sc_ram_rdata[95:88]),
+	.ram_wadr(sc_ram_adr[39:30]),
+	.ram_wdata(sc_ram_wdata[31:24]),
+	.ram_wen(sc_ram_wen[11])
 	);
 `endif // FPGA_MODE
 
-scratch2_1r1w scratch2_1r1w (
-	.clk(clk),
-	.ram_radr(sc_ram_radr[5:0]),
-	.ram_rdata(sc_ram_rdata_12),
-	.ram_wadr(sc_ram_wadr[5:0]),
-	.ram_wdata(sc_ram_wdata),
-	.ram_wen(sc_ram_wen_12)
+// scratch2 : bank 12-15 = lane 0-3 of group 3 (16x8 each, 64B in total)
+scratch2_1r1w scratch2_1r1w_0 (
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[3:0]),
+	.ram_rdata(sc_ram_rdata[103:96]),
+	.ram_wadr(sc_ram_adr[3:0]),
+	.ram_wdata(sc_ram_wdata[7:0]),
+	.ram_wen(sc_ram_wen[12])
+	);
+
+scratch2_1r1w scratch2_1r1w_1 (
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[13:10]),
+	.ram_rdata(sc_ram_rdata[111:104]),
+	.ram_wadr(sc_ram_adr[13:10]),
+	.ram_wdata(sc_ram_wdata[15:8]),
+	.ram_wen(sc_ram_wen[13])
+	);
+
+scratch2_1r1w scratch2_1r1w_2 (
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[23:20]),
+	.ram_rdata(sc_ram_rdata[119:112]),
+	.ram_wadr(sc_ram_adr[23:20]),
+	.ram_wdata(sc_ram_wdata[23:16]),
+	.ram_wen(sc_ram_wen[14])
+	);
+
+scratch2_1r1w scratch2_1r1w_3 (
+	.clk(mclk),
+	.ram_radr(sc_ram_adr[33:30]),
+	.ram_rdata(sc_ram_rdata[127:120]),
+	.ram_wadr(sc_ram_adr[33:30]),
+	.ram_wdata(sc_ram_wdata[31:24]),
+	.ram_wen(sc_ram_wen[15])
 	);
 
 io_led io_led (

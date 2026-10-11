@@ -40,38 +40,19 @@ module qspi_if (
 	input [31:0] write_adr,
 	input [31:0] write_data,
 
-	// scratch RAM (12288 x 8bit / 12KB, 1r1w) port + scratch2 (64 x 8bit) right after it
-	// 12 x 1024x8 banks (_0.._11) + scratch2 (_12) share one address/data bus; write enable and the
-	// read data mux are decoded/selected in here, fpga_top only wires straight through
-	output [9:0] sc_ram_radr,
-	output [9:0] sc_ram_wadr,
-	output [7:0] sc_ram_wdata,
-	output sc_ram_wen_0,
-	output sc_ram_wen_1,
-	output sc_ram_wen_2,
-	output sc_ram_wen_3,
-	output sc_ram_wen_4,
-	output sc_ram_wen_5,
-	output sc_ram_wen_6,
-	output sc_ram_wen_7,
-	output sc_ram_wen_8,
-	output sc_ram_wen_9,
-	output sc_ram_wen_10,
-	output sc_ram_wen_11,
-	output sc_ram_wen_12,
-	input [7:0] sc_ram_rdata_0,
-	input [7:0] sc_ram_rdata_1,
-	input [7:0] sc_ram_rdata_2,
-	input [7:0] sc_ram_rdata_3,
-	input [7:0] sc_ram_rdata_4,
-	input [7:0] sc_ram_rdata_5,
-	input [7:0] sc_ram_rdata_6,
-	input [7:0] sc_ram_rdata_7,
-	input [7:0] sc_ram_rdata_8,
-	input [7:0] sc_ram_rdata_9,
-	input [7:0] sc_ram_rdata_10,
-	input [7:0] sc_ram_rdata_11,
-	input [7:0] sc_ram_rdata_12,
+	// scratch RAM (12288 x 8bit / 12KB) + scratch2 (64 x 8bit) request port
+	// The RAMs and their lane / bank logic run on mclk (scratch_mif); this side
+	// hands a request over with a toggle handshake (sc_req -> sc_ack, both
+	// 2FF synchronized on the receiving side). sc_wr / sc_last / sc_adr /
+	// sc_wdata are held stable from the sc_req toggle until sc_ack returns,
+	// sc_mrdata is held stable by scratch_mif from the sc_ack toggle on.
+	output reg sc_req,
+	output reg sc_wr,
+	output reg [1:0] sc_last,     // number of bytes - 1
+	output reg [13:0] sc_adr,
+	output reg [31:0] sc_wdata,
+	input sc_ack,
+	input [31:0] sc_mrdata,
 
 	input dma_io_we,
 	input [15:2] dma_io_wadr,
@@ -866,19 +847,32 @@ always @ (posedge clk or negedge rst_n) begin
 		write_data_lat <= write_data;
 end
 
-// scratch RAM access control (12 x 1024x8 banks + scratch2, outside / in fpga_top, mapped at 0x03000000)
-//   The RAM is byte wide with one write port and one read port, so a word / half word
-//   access is done as 4 / 2 sequential byte accesses (little endian, same as the flash side).
-//   write : req -> N cycles of byte write -> write_finish (in the last write cycle)
-//   read  : req -> N cycles of address issue (data returns one cycle later) -> read_valid
+// scratch RAM access control (12 x 1024x8 banks + scratch2, mapped at 0x03000000)
+//   The RAM cycle itself (per lane address, bank wen decode, read data mux) runs on
+//   mclk in scratch_mif. This side latches the request bundle, toggles sc_req and
+//   waits for the synchronized sc_ack toggle:
+//   write : req -> bundle + sc_req toggle -> ... -> sc_ack seen -> write_finish
+//   read  : req -> bundle + sc_req toggle -> ... -> sc_ack seen -> sc_mrdata capture
+//           -> read_valid
 
 reg sc_busy;
-reg sc_wr;
-reg [1:0] sc_last;   // number of bytes - 1
-reg [2:0] sc_step;
-reg [13:0] sc_adr;
-reg [31:0] sc_wdata;
+reg sc_rvalid;
 reg [31:0] sc_rdata;
+
+// ack toggle synchronizer (2FF)
+reg sc_ack_c1;
+reg sc_ack_c2;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n) begin
+		sc_ack_c1 <= 1'b0;
+		sc_ack_c2 <= 1'b0;
+	end
+	else begin
+		sc_ack_c1 <= sc_ack;
+		sc_ack_c2 <= sc_ack_c1;
+	end
+end
 
 wire sc_read_req = read_req & rd_sc_sel;
 wire sc_write_req = write_req & wr_sc_sel & ~sc_read_req;
@@ -888,93 +882,51 @@ wire sc_w_pre = sc_read_req ? read_w : write_w;
 wire sc_hw_pre = sc_read_req ? read_hw : write_hw;
 wire [13:0] sc_adr_pre = sc_read_req ? read_adr[13:0] : write_adr[13:0];
 
-wire sc_wr_last = sc_busy & sc_wr & (sc_step == { 1'b0, sc_last });
-wire sc_rd_done = sc_busy & ~sc_wr & (sc_step == { 1'b0, sc_last } + 3'd2);
-wire sc_rd_cap = sc_busy & ~sc_wr & (sc_step != 3'd0) & ~sc_rd_done;
-wire [1:0] sc_cap_idx = sc_step[1:0] - 2'd1;
+// sc_req has already toggled when sc_busy is set, so the ack matches it only
+// once scratch_mif has finished this access
+wire sc_acked = sc_busy & (sc_ack_c2 == sc_req);
+wire sc_wr_done = sc_acked & sc_wr;
+wire sc_rd_cap = sc_acked & ~sc_wr & ~sc_rvalid;
+wire sc_rd_done = sc_rvalid;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n) begin
 		sc_busy <= 1'b0;
+		sc_req <= 1'b0;
 		sc_wr <= 1'b0;
 		sc_last <= 2'd0;
-		sc_step <= 3'd0;
 		sc_adr <= 14'd0;
 		sc_wdata <= 32'd0;
 	end
 	else if (sc_start) begin
 		sc_busy <= 1'b1;
+		sc_req <= ~sc_req;
 		sc_wr <= ~sc_read_req;
 		sc_last <= sc_w_pre ? 2'd3 : sc_hw_pre ? 2'd1 : 2'd0;
-		sc_step <= 3'd0;
 		sc_adr <= sc_adr_pre;
 		sc_wdata <= write_data;
 	end
-	else if (sc_wr_last | sc_rd_done) begin
+	else if (sc_wr_done | sc_rd_done) begin
 		sc_busy <= 1'b0;
-		sc_step <= 3'd0;
-	end
-	else if (sc_busy) begin
-		sc_step <= sc_step + 3'd1;
 	end
 end
 
 always @ (posedge clk or negedge rst_n) begin
-	if (~rst_n)
+	if (~rst_n) begin
+		sc_rvalid <= 1'b0;
 		sc_rdata <= 32'd0;
-	else if (sc_start)
-		sc_rdata <= 32'd0;
-	else if (sc_rd_cap)
-		sc_rdata[{ sc_cap_idx, 3'd0 } +: 8] <= sc_ram_rdata_sel;
+	end
+	else if (sc_rd_cap) begin
+		sc_rvalid <= 1'b1;
+		sc_rdata <= sc_mrdata;
+	end
+	else begin
+		sc_rvalid <= 1'b0;
+	end
 end
-
-wire [13:0] sc_byte_adr = sc_adr + { 12'd0, sc_step[1:0] };
-
-// bank select : byte address [13:10] picks 1 of the 12 1024x8 banks (0-11),
-// 12 and above go to scratch2; the lower 10 bits are the common address driven to every bank
-wire [3:0] sc_bank = sc_byte_adr[13:10];
-
-reg [3:0] sc_bank_dly;
-
-always @ (posedge clk or negedge rst_n) begin
-	if (~rst_n)
-		sc_bank_dly <= 4'd0;
-	else
-		sc_bank_dly <= sc_bank;
-end
-
-wire [7:0] sc_ram_rdata_sel = (sc_bank_dly == 4'd0) ? sc_ram_rdata_0 :
-                              (sc_bank_dly == 4'd1) ? sc_ram_rdata_1 :
-                              (sc_bank_dly == 4'd2) ? sc_ram_rdata_2 :
-                              (sc_bank_dly == 4'd3) ? sc_ram_rdata_3 :
-                              (sc_bank_dly == 4'd4) ? sc_ram_rdata_4 :
-                              (sc_bank_dly == 4'd5) ? sc_ram_rdata_5 :
-                              (sc_bank_dly == 4'd6) ? sc_ram_rdata_6 :
-                              (sc_bank_dly == 4'd7) ? sc_ram_rdata_7 :
-                              (sc_bank_dly == 4'd8) ? sc_ram_rdata_8 :
-                              (sc_bank_dly == 4'd9) ? sc_ram_rdata_9 :
-                              (sc_bank_dly == 4'd10) ? sc_ram_rdata_10 :
-                              (sc_bank_dly == 4'd11) ? sc_ram_rdata_11 : sc_ram_rdata_12;
-
-assign sc_ram_radr = sc_byte_adr[9:0];
-assign sc_ram_wadr = sc_byte_adr[9:0];
-assign sc_ram_wdata = sc_wdata[{ sc_step[1:0], 3'd0 } +: 8];
-assign sc_ram_wen_0 = sc_busy & sc_wr & (sc_bank == 4'd0);
-assign sc_ram_wen_1 = sc_busy & sc_wr & (sc_bank == 4'd1);
-assign sc_ram_wen_2 = sc_busy & sc_wr & (sc_bank == 4'd2);
-assign sc_ram_wen_3 = sc_busy & sc_wr & (sc_bank == 4'd3);
-assign sc_ram_wen_4 = sc_busy & sc_wr & (sc_bank == 4'd4);
-assign sc_ram_wen_5 = sc_busy & sc_wr & (sc_bank == 4'd5);
-assign sc_ram_wen_6 = sc_busy & sc_wr & (sc_bank == 4'd6);
-assign sc_ram_wen_7 = sc_busy & sc_wr & (sc_bank == 4'd7);
-assign sc_ram_wen_8 = sc_busy & sc_wr & (sc_bank == 4'd8);
-assign sc_ram_wen_9 = sc_busy & sc_wr & (sc_bank == 4'd9);
-assign sc_ram_wen_10 = sc_busy & sc_wr & (sc_bank == 4'd10);
-assign sc_ram_wen_11 = sc_busy & sc_wr & (sc_bank == 4'd11);
-assign sc_ram_wen_12 = sc_busy & sc_wr & (sc_bank > 4'd11);
 
 wire sc_read_valid = sc_rd_done;
-wire sc_write_finish = sc_wr_last;
+wire sc_write_finish = sc_wr_done;
 
 // merge with the flash side
 assign read_valid = qspi_read_valid | sc_read_valid;
