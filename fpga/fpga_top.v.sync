@@ -30,11 +30,11 @@ module fpga_top (
 	output tx,
 	output [2:0] rgb_led,
 `ifdef FPGA_MODE
-	inout [3:0] gpio,
+	inout [5:0] gpio,
 `else // FPGA_MODE
-	input [3:0] gpio_i,
-	output [3:0] gpio_o,
-	output [3:0] gpio_en,
+	input [5:0] gpio_i,
+	output [5:0] gpio_o,
+	output [5:0] gpio_en,
 `endif // FPGA_MODE
 
 `ifndef FPGA_MODE
