@@ -24,10 +24,12 @@ module io_uart2(
     input [31:0] dma_io_rdata_in,
     output [31:0] dma_io_rdata,
 
-	output ext_uart2_interrpt_1shot,
-	output reg uart2_io_en
+	output ext_uart2_interrpt_1shot
 
 	);
+
+// uart2_io_en: CSR bit only (no longer drives any IO)
+reg uart2_io_en;
 
 // misc signals
 reg [15:0] uart_term;

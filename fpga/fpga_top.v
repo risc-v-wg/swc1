@@ -328,8 +328,7 @@ wire spi_miso = init_qspicmd; // input
 
 //wire rx2 = init_latency[0]; // input
 //wire tx2; // output
-//wire uart2_io_en; // output
-//wire ext_uart2_interrpt_1shot;
+wire ext_uart2_interrpt_1shot;
 
 //`ifdef FPGA_MODE
 //assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
@@ -832,8 +831,7 @@ io_uart2 io_uart2 (
         .dma_io_radr_en(dma_io_radr_en),
         .dma_io_rdata_in(dma_io_rdata_in_7),
         .dma_io_rdata(dma_io_rdata),
-        .ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot),
-        .uart2_io_en(uart2_io_en)
+        .ext_uart2_interrpt_1shot(ext_uart2_interrpt_1shot)
         );
 
 
