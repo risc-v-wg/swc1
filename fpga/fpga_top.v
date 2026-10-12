@@ -103,13 +103,17 @@ module fpga_top (
 	input [7:0] sram_q_11,
 `endif // FPGA_MODE
 
-`ifdef FPGA_MODE
-	 inout [1:0] init_latency,
-`else // FPGA_MODE
-	input [1:0] init_latency_i,
-	output [1:0] init_latency_o,
-	output init_latency_en,
-`endif // FPGA_MODE
+	input rx2,
+	output tx2,
+
+	input [1:0] init_latency,
+//`ifdef FPGA_MODE
+	//inout [1:0] init_latency,
+//`else // FPGA_MODE
+	//input [1:0] init_latency_i,
+	//output [1:0] init_latency_o,
+	//output init_latency_en,
+//`endif // FPGA_MODE
 
 	input init_qspicmd,
 	input init_cpu_start,
@@ -322,18 +326,18 @@ wire spi_miso = init_qspicmd; // input
 
 // uart2 IO selector
 
-wire rx2 = init_latency[0]; // input
-wire tx2; // output
-wire uart2_io_en; // output
-wire ext_uart2_interrpt_1shot;
+//wire rx2 = init_latency[0]; // input
+//wire tx2; // output
+//wire uart2_io_en; // output
+//wire ext_uart2_interrpt_1shot;
 
-`ifdef FPGA_MODE
-assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
-`else // FPGA_MODE
-wire [1:0] init_latency = init_latency_i;
-assign init_latency_o = { tx2, 1'b0 };
-assign init_latency_en = uart2_io_en;
-`endif // FPGA_MODE
+//`ifdef FPGA_MODE
+//assign init_latency = uart2_io_en ? { tx2, 1'bz } : 2'bzz;
+//`else // FPGA_MODE
+//wire [1:0] init_latency = init_latency_i;
+//assign init_latency_o = { tx2, 1'b0 };
+//assign init_latency_en = uart2_io_en;
+//`endif // FPGA_MODE
 
 // io bus logics
 wire dma_io_we = dma_io_we_c | dma_io_we_u;

@@ -64,16 +64,20 @@ set_property PACKAGE_PIN D10 [get_ports tx]
 set_property IOSTANDARD LVCMOS33 [get_ports rst_n]
 set_property PACKAGE_PIN C2 [get_ports rst_n]
 
-set_property IOSTANDARD LVCMOS33 [get_ports {init_latency[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {rx2}]
 # IO40 rx2
-set_property PACKAGE_PIN P18 [get_ports {init_latency[0]}]
-set_property IOSTANDARD LVCMOS33 [get_ports {init_latency[1]}]
+set_property PACKAGE_PIN P18 [get_ports {rx2}]
+set_property IOSTANDARD LVCMOS33 [get_ports {tx2}]
 # IO41 tx2
-set_property PACKAGE_PIN N17 [get_ports {init_latency[1]}]
-set_property DRIVE 12 [get_ports {init_latency[1]}]
-set_property SLEW SLOW [get_ports {init_latency[1]}]
-set_property OFFCHIP_TERM NONE [get_ports {init_latency[1]}]
+set_property PACKAGE_PIN N17 [get_ports {tx2}]
+get_property DRIVE 12 [get_ports {tx2}]
+set_property SLEW SLOW [get_ports {tx2}]
+set_property OFFCHIP_TERM NONE [get_ports {tx2}]
 
+set_property IOSTANDARD LVCMOS33 [get_ports {init_latency[0]}]
+set_property PACKAGE_PIN C9 [get_ports {init_latency[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {init_latency[1]}]
+set_property PACKAGE_PIN B9 [get_ports {init_latency[1]}]
 set_property IOSTANDARD LVCMOS33 [get_ports init_cpu_start]
 set_property PACKAGE_PIN B8 [get_ports init_cpu_start]
 
