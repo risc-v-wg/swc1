@@ -34,6 +34,8 @@ module io_spi_lite(
 `define SYS_SPI_SDIV  14'h3C81
 `define SYS_SPI_MOSI  14'h3C82
 `define SYS_SPI_MISO  14'h3C83
+`define SYS_SPI_CSVL  14'h3C84
+`define SYS_SPI_CSMD  14'h3C85
 
 wire we_spi_mode = dma_io_we      & (dma_io_wadr == `SYS_SPI_MODE);
 wire re_spi_mode = dma_io_radr_en & (dma_io_radr == `SYS_SPI_MODE);
@@ -47,6 +49,30 @@ wire re_spi_mosi = dma_io_radr_en & (dma_io_radr == `SYS_SPI_MOSI);
 wire we_spi_miso = dma_io_we      & (dma_io_wadr == `SYS_SPI_MISO);
 wire re_spi_miso = dma_io_radr_en & (dma_io_radr == `SYS_SPI_MISO);
 
+wire we_spi_csvl = dma_io_we      & (dma_io_wadr == `SYS_SPI_CSVL);
+wire re_spi_csvl = dma_io_radr_en & (dma_io_radr == `SYS_SPI_CSVL);
+
+wire we_spi_csmd = dma_io_we      & (dma_io_wadr == `SYS_SPI_CSMD);
+wire re_spi_csmd = dma_io_radr_en & (dma_io_radr == `SYS_SPI_CSMD);
+
+
+// new mode bits for wafer.space
+reg spi_csvl;
+reg spi_csmd;
+
+always @ (posedge clk or negedge rst_n) begin
+    if (~rst_n)
+        spi_csvl <= 1'b0;
+    else if (we_spi_csvl)
+        spi_csvl <= dma_io_wdata[0];
+end
+
+always @ (posedge clk or negedge rst_n) begin
+    if (~rst_n)
+        spi_csmd <= 1'b0;
+    else if (we_spi_csmd)
+        spi_csmd <= dma_io_wdata[0];
+end
 
 reg [12:0] spi_mode;
 
@@ -77,7 +103,7 @@ end
 // miso signals
 wire miso_fifo_empty;
 reg miso_fifo_empty_lat;
-reg [3:0] re_spi_value_dly;
+reg [5:0] re_spi_value_dly;
 
 wire miso_fifo_re = re_spi_value_dly[3] & ~miso_fifo_empty_lat;
 wire miso_reset_fifo = we_spi_miso & dma_io_wdata[10]; // need to add
@@ -93,9 +119,9 @@ reg mosi_fifo_full_lat;
 
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
-        re_spi_value_dly <= 4'd0 ;
+        re_spi_value_dly <= 6'd0 ;
     else
-        re_spi_value_dly <= { re_spi_miso, re_spi_mosi, re_spi_sdiv, re_spi_mode };
+        re_spi_value_dly <= { re_spi_csmd, re_spi_csvl, re_spi_miso, re_spi_mosi, re_spi_sdiv, re_spi_mode };
 end
 
 assign dma_io_rdata = (re_spi_value_dly[0] == 1'b1) ? { 5'd0, spi_mode[12:10], 1'b0, spi_mode[9:7], 1'b0, spi_mode[6:4], 12'd0, spi_mode[3:0] } :
@@ -103,7 +129,9 @@ assign dma_io_rdata = (re_spi_value_dly[0] == 1'b1) ? { 5'd0, spi_mode[12:10], 1
                       (re_spi_value_dly[1] == 1'b1) ? { 22'd0, spi_sck_div } :
 
                       (re_spi_value_dly[2] == 1'b1) ? { 22'd0, mosi_fifo_empty_lat, mosi_fifo_full_lat, 8'd0 } :
-                      (re_spi_value_dly[3] == 1'b1) ? { 21'd0, ~miso_fifo_re, miso_fifo_empty_lat, miso_fifo_full_lat, miso_fifo_out } : dma_io_rdata_in;
+                      (re_spi_value_dly[3] == 1'b1) ? { 21'd0, ~miso_fifo_re, miso_fifo_empty_lat, miso_fifo_full_lat, miso_fifo_out } :
+                      (re_spi_value_dly[4] == 1'b1) ? { 31'd0, spi_csvl } :
+                      (re_spi_value_dly[5] == 1'b1) ? { 31'd0, spi_csmd } : dma_io_rdata_in;
 
 // logics
 // sck divide counter
@@ -326,8 +354,9 @@ wire [7:0] sel_cs = { shift_cs, cs_all_status };
 
 wire cs_org = sel_cs[spi_mode_sck_ph_mosi];
 
-assign spi_csn = (~cs_org) ? 2'b11 : 2'b10;
+wire spi_csn_pre = (~cs_org) ? 2'b11 : 2'b10;
 
+assign spi_csn = spi_csmd ? { 1'b1, spi_csvl } : spi_csn_pre;
 
 // miso input latch
 reg [7:0] miso_lat;
