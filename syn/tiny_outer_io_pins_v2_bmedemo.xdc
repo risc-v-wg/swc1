@@ -190,6 +190,12 @@ set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1
 set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {gpio[*]}]
 set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {sio[*]}]
 set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {sio[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {rgb_led[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {rgb_led[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports tx2]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports tx2]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports rx2]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports rx2]
 
 set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports {rgb_led[*]}]
 set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports {rgb_led[*]}]
@@ -199,4 +205,8 @@ set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 
 set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports {gpio[*]}]
 set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay  3.000 [get_ports {sio[*]}]
 set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay  3.000 [get_ports {sio[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports tx2]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports tx2]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports rx2]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports rx2]
 

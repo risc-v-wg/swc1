@@ -31,10 +31,14 @@ module fpga_top (
 
 	input rx,
 	output tx,
-	output [2:0] rgb_led,
 `ifdef FPGA_MODE
+	//output [2:0] rgb_led,
+	inout [2:0] rgb_led,
 	inout [5:0] gpio,
 `else // FPGA_MODE
+	input [2:0] rgb_led_i,
+	output [2:0] rgb_led_o,
+	output [2:0] rgb_led_en,
 	input [5:0] gpio_i,
 	output [5:0] gpio_o,
 	output [5:0] gpio_en,
@@ -103,8 +107,17 @@ module fpga_top (
 	input [7:0] sram_q_11,
 `endif // FPGA_MODE
 
-	input rx2,
-	output tx2,
+`ifdef FPGA_MODE
+	inout rx2,
+	inout tx2,
+`else // FPGA_MODE
+	input rx2_i,
+	output rx2_o,
+	output rx2_en,
+	input tx2_i,
+	output tx2_o,
+	output tx2_en,
+`endif // FPGA_MODE
 
 	input [1:0] init_latency,
 //`ifdef FPGA_MODE
@@ -314,17 +327,21 @@ wire spi_select_io; // output
 wire spi_sck; // output
 wire [1:0] spi_csn; // output
 wire spi_mosi; // output
-wire [2:0] rgb_led_org;
+//wire [5:0] rgb_led_org;
 
 // break point debug singal
 wire [2:0] dbg_bpoint_en;
 wire [2:0] dbg_bpoint;
 
 // spi IO selector
-assign rgb_led = spi_select_io ? { spi_mosi, spi_csn[0], spi_sck } : rgb_led_org;
+//assign rgb_led = spi_select_io ? { spi_mosi, spi_csn[0], spi_sck } : rgb_led_org[2:0];
 wire spi_miso = init_qspicmd; // input
 
 // uart2 IO selector
+
+wire uart2_io_en;
+wire rx2_org;
+wire tx2_org;
 
 //wire rx2 = init_latency[0]; // input
 //wire tx2; // output
@@ -346,6 +363,7 @@ wire dma_io_radr_en = dma_io_radr_en_c | dma_io_radr_en_u;
 wire [15:2] dma_io_radr = dma_io_radr_en_u ? dma_io_radr_u : dma_io_radr_c;
 
 `ifdef FPGA_MODE
+wire mclk;
 clk_wiz_0 clk_wiz_0 (
 	.clk_out1(clk),
 	.clk_out2(mclk),
@@ -729,7 +747,28 @@ io_led io_led (
 	.dma_io_radr_en(dma_io_radr_en),
 	.dma_io_rdata_in(dma_io_rdata_in_2),
 	.dma_io_rdata(dma_io_rdata_in_3),
-	.rgb_led(rgb_led_org),
+	.spi_mosi(spi_mosi),
+	.spi_csn(spi_csn),
+	.spi_sck(spi_sck),
+	.spi_select_io(spi_select_io),
+	.rx2_org(rx2_org),
+	.tx2_org(tx2_org),
+	.uart2_io_en(uart2_io_en),
+`ifdef FPGA_MODE
+	.rgb_led(rgb_led),
+	.rx2(rx2),
+	.tx2(tx2),
+`else // FPGA_MODE
+	.rgb_led_i(rgb_led_i),
+	.rgb_led_o(rgb_led_o),
+	.rgb_led_en(rgb_led_en),
+	.rx2_i(rx2_i),
+	.rx2_o(rx2_o),
+	.rx2_en(rx2_en),
+	.tx2_i(tx2_i),
+	.tx2_o(tx2_o),
+	.tx2_en(tx2_en),
+`endif // FPGA_MODE
 	.dbg_bpoint_en(dbg_bpoint_en),
 	.dbg_bpoint(dbg_bpoint),
 	.cpu_start(cpu_start),
@@ -822,8 +861,9 @@ io_spi_lite io_spi_lite(
 io_uart2 io_uart2 (
         .clk(clk),
         .rst_n(rst_n),
-        .rx2(rx2),
-        .tx2(tx2),
+        .rx2(rx2_org),
+        .tx2(tx2_org),
+        .uart2_io_en(uart2_io_en),
         .dma_io_we(dma_io_we),
         .dma_io_wadr(dma_io_wadr),
         .dma_io_wdata(dma_io_wdata),

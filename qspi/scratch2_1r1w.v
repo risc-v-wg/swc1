@@ -10,17 +10,17 @@
 
 module scratch2_1r1w(
 	input clk,
-	input [5:0] ram_radr,
+	input [3:0] ram_radr,
 	output [7:0] ram_rdata,
-	input [5:0] ram_wadr,
+	input [3:0] ram_wadr,
 	input [7:0] ram_wdata,
 	input ram_wen
 	);
 
-// 64x8 1r1w RAM
+// 16x8 1r1w RAM (one byte lane of the 64B scratch2)
 
-reg[7:0] ram[0:63];
-reg[5:0] radr;
+reg[7:0] ram[0:15];
+reg[3:0] radr;
 
 always @ (posedge clk) begin
 	if (ram_wen)

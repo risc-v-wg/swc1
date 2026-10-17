@@ -1,0 +1,211 @@
+# QSPI Pmod pins JC version (FAST)
+# JD1 ce_n[0]  U12  6
+# JD2 sio[0]   V12  1
+# JD3 sio[1]   V10  5
+# JD4 sck      V11  2
+# JD7 sio[2]   U14  3
+# JD8 sio[3]   V14  7
+# JD9 ce_n[1]  T13
+# JD10 ce_n[2] U13
+# JD5,11 GND       4
+# JD6,12 3.3V      8
+
+# Ether Pmod pins JA version (SLOW)
+## Pmod pins JA for SPI ether
+## JA1 cs G13 out RGB[1]
+## JA2 sck B11 out RGB[2]
+## JA3 MOSI A11 in init_qspi_cmd
+## JA4 MISO D12 out RGB[0]
+## JA7 INT D13 in interrupt_0
+
+# Pmod pins JB for SPI ether
+# JB1_P CS E15 out RGB[1] -> GPIO[0]
+# JB1_N MOSI E16 out RGB[2]
+# JB2_P MISO D15 in init_qspicmd
+# JB2_N SCK C15 out RGB[0]
+# JB3_P INT J17 in interrupt_0
+
+set_property OFFCHIP_TERM NONE [get_ports rgb_led[2]]
+set_property OFFCHIP_TERM NONE [get_ports rgb_led[1]]
+set_property OFFCHIP_TERM NONE [get_ports rgb_led[0]]
+set_property IOSTANDARD LVCMOS33 [get_ports {rgb_led[2]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {rgb_led[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {rgb_led[0]}]
+set_property DRIVE 12 [get_ports {rgb_led[2]}]
+set_property DRIVE 12 [get_ports {rgb_led[1]}]
+set_property DRIVE 12 [get_ports {rgb_led[0]}]
+set_property SLEW SLOW [get_ports {rgb_led[2]}]
+set_property SLEW SLOW [get_ports {rgb_led[1]}]
+set_property SLEW SLOW [get_ports {rgb_led[0]}]
+set_property PACKAGE_PIN E1 [get_ports {rgb_led[2]}]
+set_property PACKAGE_PIN F6 [get_ports {rgb_led[1]}]
+set_property PACKAGE_PIN G6 [get_ports {rgb_led[0]}]
+
+set_property OFFCHIP_TERM NONE [get_ports sck]
+set_property OFFCHIP_TERM NONE [get_ports ce_n[0]]
+set_property OFFCHIP_TERM NONE [get_ports ce_n[1]]
+set_property OFFCHIP_TERM NONE [get_ports ce_n[2]]
+set_property IOSTANDARD LVCMOS33 [get_ports {sck}]
+set_property IOSTANDARD LVCMOS33 [get_ports {ce_n[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {ce_n[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {ce_n[2]}]
+set_property DRIVE 8 [get_ports {sck}]
+set_property DRIVE 8 [get_ports {ce_n[0]}]
+set_property DRIVE 8 [get_ports {ce_n[1]}]
+set_property DRIVE 8 [get_ports {ce_n[2]}]
+set_property SLEW SLOW [get_ports {sck}]
+set_property SLEW SLOW [get_ports {ce_n[0]}]
+set_property SLEW SLOW [get_ports {ce_n[1]}]
+set_property SLEW SLOW [get_ports {ce_n[2]}]
+set_property PACKAGE_PIN V11 [get_ports {sck}]
+set_property PACKAGE_PIN U12 [get_ports {ce_n[0]}]
+set_property PACKAGE_PIN T13 [get_ports {ce_n[1]}]
+#set_property PACKAGE_PIN U13 [get_ports {ce_n[2]}]
+set_property PACKAGE_PIN D12 [get_ports {ce_n[2]}]
+
+
+set_property IOSTANDARD LVCMOS33 [get_ports clkin]
+set_property PACKAGE_PIN E3 [get_ports clkin]
+set_property IOSTANDARD LVCMOS33 [get_ports rx]
+set_property PACKAGE_PIN A9 [get_ports rx]
+set_property IOSTANDARD LVCMOS33 [get_ports interrupt_0]
+#set_property PACKAGE_PIN D9 [get_ports interrupt_0]
+set_property PACKAGE_PIN J17 [get_ports interrupt_0]
+
+set_property OFFCHIP_TERM NONE [get_ports tx]
+set_property IOSTANDARD LVCMOS33 [get_ports tx]
+set_property DRIVE 12 [get_ports tx]
+set_property SLEW SLOW [get_ports tx]
+set_property PACKAGE_PIN D10 [get_ports tx]
+
+set_property IOSTANDARD LVCMOS33 [get_ports rst_n]
+set_property PACKAGE_PIN C2 [get_ports rst_n]
+
+set_property IOSTANDARD LVCMOS33 [get_ports rx2]
+# IO40 rx2
+set_property PACKAGE_PIN H6 [get_ports rx2]
+
+set_property IOSTANDARD LVCMOS33 [get_ports tx2]
+# IO41 tx2
+set_property PACKAGE_PIN K1 [get_ports tx2]
+set_property DRIVE 12 [get_ports tx2]
+set_property SLEW SLOW [get_ports tx2]
+set_property OFFCHIP_TERM NONE [get_ports tx2]
+
+set_property IOSTANDARD LVCMOS33 [get_ports {init_latency[0]}]
+set_property PACKAGE_PIN C9 [get_ports {init_latency[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {init_latency[1]}]
+set_property PACKAGE_PIN B9 [get_ports {init_latency[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports init_cpu_start]
+set_property PACKAGE_PIN B8 [get_ports init_cpu_start]
+
+set_property IOSTANDARD LVCMOS33 [get_ports {init_uart[0]}]
+set_property PACKAGE_PIN A8 [get_ports {init_uart[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {init_uart[1]}]
+set_property PACKAGE_PIN C11 [get_ports {init_uart[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports init_qspicmd]
+set_property PACKAGE_PIN D15 [get_ports init_qspicmd]
+set_property PULLUP true [get_ports init_qspicmd]
+
+set_property OFFCHIP_TERM NONE [get_ports gpio[5]]
+set_property OFFCHIP_TERM NONE [get_ports gpio[4]]
+set_property OFFCHIP_TERM NONE [get_ports gpio[3]]
+set_property OFFCHIP_TERM NONE [get_ports gpio[2]]
+set_property OFFCHIP_TERM NONE [get_ports gpio[1]]
+set_property OFFCHIP_TERM NONE [get_ports gpio[0]]
+set_property IOSTANDARD LVCMOS33 [get_ports {gpio[5]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {gpio[4]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {gpio[3]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {gpio[2]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {gpio[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {gpio[0]}]
+set_property DRIVE 12 [get_ports {gpio[5]}]
+set_property DRIVE 12 [get_ports {gpio[4]}]
+set_property DRIVE 12 [get_ports {gpio[3]}]
+set_property DRIVE 12 [get_ports {gpio[2]}]
+set_property DRIVE 12 [get_ports {gpio[1]}]
+set_property DRIVE 12 [get_ports {gpio[0]}]
+set_property SLEW SLOW [get_ports {gpio[5]}]
+set_property SLEW SLOW [get_ports {gpio[4]}]
+set_property SLEW SLOW [get_ports {gpio[3]}]
+set_property SLEW SLOW [get_ports {gpio[2]}]
+set_property SLEW SLOW [get_ports {gpio[1]}]
+set_property SLEW SLOW [get_ports {gpio[0]}]
+set_property PACKAGE_PIN H4 [get_ports {gpio[5]}]
+set_property PACKAGE_PIN J2 [get_ports {gpio[4]}]
+set_property PACKAGE_PIN J3 [get_ports {gpio[3]}]
+set_property PACKAGE_PIN G4 [get_ports {gpio[2]}]
+set_property PACKAGE_PIN J4 [get_ports {gpio[1]}]
+set_property PACKAGE_PIN G3 [get_ports {gpio[0]}]
+# set_property PACKAGE_PIN E15 [get_ports {gpio[0]}]
+
+# set_property PULLDOWN true [get_ports {gpio[3]}]
+# set_property PULLUP true [get_ports {gpio[2]}]
+# set_property PULLUP true [get_ports {gpio[1]}]
+
+set_property OFFCHIP_TERM NONE [get_ports sio[0]]
+set_property OFFCHIP_TERM NONE [get_ports sio[1]]
+set_property OFFCHIP_TERM NONE [get_ports sio[2]]
+set_property OFFCHIP_TERM NONE [get_ports sio[3]]
+set_property IOSTANDARD LVCMOS33 [get_ports {sio[0]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sio[1]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sio[2]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {sio[3]}]
+set_property DRIVE 8 [get_ports {sio[0]}]
+set_property DRIVE 8 [get_ports {sio[1]}]
+set_property DRIVE 8 [get_ports {sio[2]}]
+set_property DRIVE 8 [get_ports {sio[3]}]
+set_property SLEW SLOW [get_ports {sio[0]}]
+set_property SLEW SLOW [get_ports {sio[1]}]
+set_property SLEW SLOW [get_ports {sio[2]}]
+set_property SLEW SLOW [get_ports {sio[3]}]
+set_property PACKAGE_PIN V12 [get_ports {sio[0]}]
+set_property PACKAGE_PIN V10 [get_ports {sio[1]}]
+set_property PACKAGE_PIN U14 [get_ports {sio[2]}]
+set_property PACKAGE_PIN V14 [get_ports {sio[3]}]
+
+
+#revert back to original instance
+#current_instance -quiet
+
+create_clock -period 10.000 -name clkin -waveform {0.000 5.000} [get_ports clkin]
+
+#create_generated_clock -name clk [get_pins fpga_all_top/clknetwork/clk_out1]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports rst_n]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports rst_n]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports rx]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports rx]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports interrupt_0]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports interrupt_0]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {init_latency[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {init_latency[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports init_cpu_start]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports init_cpu_start]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {init_uart[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {init_uart[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports init_qspicmd]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports init_qspicmd]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {gpio[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {gpio[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {sio[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {sio[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports {rgb_led[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports {rgb_led[*]}]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports tx2]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports tx2]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay 1.000 [get_ports rx2]
+set_input_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay 1.000 [get_ports rx2]
+
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports {rgb_led[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports {rgb_led[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports tx]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports tx]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports {gpio[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports {gpio[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay  3.000 [get_ports {sio[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay  3.000 [get_ports {sio[*]}]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports tx2]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports tx2]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -min -add_delay -3.000 [get_ports rx2]
+set_output_delay -clock [get_clocks -of_objects [get_nets clk]] -max -add_delay -3.000 [get_ports rx2]
+

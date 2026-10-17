@@ -14,6 +14,7 @@ module io_uart2(
 	// outside if
 	input rx2,
 	output tx2,
+	output reg uart2_io_en,
 
 	// from/to IO bus
     input dma_io_we,
@@ -27,9 +28,6 @@ module io_uart2(
 	output ext_uart2_interrpt_1shot
 
 	);
-
-// uart2_io_en: CSR bit only (no longer drives any IO)
-reg uart2_io_en;
 
 // misc signals
 reg [15:0] uart_term;
@@ -219,10 +217,14 @@ assign rout_en = rx_fifo_dvalid & ~rx_first_read;
 wire [7:0] tx_wdata = uart_io_char;
 wire tx_wten = uart_io_we;
 
+// mask rx2 in disabe mode
+
+wire rx2_mskd = rx2 & uart2_io_en;
+
 io_uart2_if io_uart2_if (
 	.clk(clk),
 	.rst_n(rst_n),
-	.rx(rx2),
+	.rx(rx2_mskd),
 	.tx(tx2),
 	.rx_rden(rout_en),
 	.rx_rdata(rout),

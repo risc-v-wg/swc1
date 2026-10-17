@@ -354,7 +354,7 @@ wire [7:0] sel_cs = { shift_cs, cs_all_status };
 
 wire cs_org = sel_cs[spi_mode_sck_ph_mosi];
 
-wire spi_csn_pre = (~cs_org) ? 2'b11 : 2'b10;
+wire [1:0] spi_csn_pre = cs_org ? 2'b10 : 2'b11;
 
 assign spi_csn = spi_csmd ? { 1'b1, spi_csvl } : spi_csn_pre;
 
@@ -403,7 +403,7 @@ always @ (posedge clk or negedge rst_n) begin
 	else if ( ~data_phase_read )
         miso_byte_org <= 8'd0 ;
 	else if ( sck_read_lat_timing )
-		miso_byte_org <= { miso_byte_org[7:0], miso_sel };
+		miso_byte_org <= { miso_byte_org[6:0], miso_sel };
 end
 
 wire [7:0] miso_byte = (spi_mode_bit_endian) ? miso_byte_org :
