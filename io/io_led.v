@@ -110,7 +110,7 @@ end
 
 always @ (posedge clk or negedge rst_n) begin
     if (~rst_n)
-        led_en_value <= 5'h1f ; // default output mode
+        led_en_value <= 5'h07 ; // default: rgb_led output, tx2/rx2 input
 	else if ( we_led_en_value )
 		led_en_value <= dma_io_wdata[4:0];
 end
