@@ -72,6 +72,11 @@ module qspi_if (
 `define CMD_FQWIRTE 8'h38
 `define CMD_RST_EN 8'h66
 `define CMD_RESET  8'h99
+// flash serial write commands (common to IS25LP / W25Q)
+`define CMD_FL_WREN 8'h06
+`define CMD_FL_PP   8'h02
+`define CMD_FL_SE   8'h20
+`define CMD_FL_RDSR 8'h05
 
 // input sampler
 reg word_w;
@@ -215,6 +220,13 @@ wire cmd_rst_en = 1'b0; // temp
 wire read_wait_end;
 wire read_data_end;
 wire write_data_end;
+wire cmd_flwrite;
+wire fl_erase;
+wire fl_ph_wren;
+wire fl_ph_prog;
+wire sadr_end;
+wire swdata_end;
+wire srdst_end;
 
 wire dbg_2div_wirte_half_end;
 wire dbg_2div_read_half_end;
@@ -234,6 +246,10 @@ wire dbg_2div_trt;
 `define QS_FWIT1 4'b1100
 `define QS_FWIT2 4'b1101
 `define QS_WWAIT 4'b1110
+// flash serial write states
+`define QS_SADR  4'b0100
+`define QS_SWDAT 4'b0110
+`define QS_SRDST 4'b1011
 
 reg [3:0] qspi_state;
 //reg [3:0] qspi_state_dly;
@@ -252,15 +268,25 @@ input write_data_end;
 input dbg_2div_wirte_half_end;
 input dbg_2div_read_half_end;
 input dbg_2div_trt;
+input cmd_flwrite;
+input fl_erase;
+input fl_ph_wren;
+input fl_ph_prog;
+input sadr_end;
+input swdata_end;
+input srdst_end;
 
 
 begin
 	case(qspi_state)
 		//`QS_IDLE: if (cmd_freadq | cmd_qwrite | cmd_rst_en) qspi_machine = `QS_CMDW;
-		`QS_IDLE: if (cmd_freadq | cmd_qwrite | cmd_rst_en) qspi_machine = `QS_CMD;
+		`QS_IDLE: if (cmd_freadq | cmd_qwrite | cmd_flwrite | cmd_rst_en) qspi_machine = `QS_CMD;
 				  else qspi_machine = `QS_IDLE;
 		//`QS_CMDW: qspi_machine = `QS_CMD;
-		`QS_CMD: if (cmd_end & (cmd_freadq | cmd_qwrite)) qspi_machine = `QS_ADR;
+		`QS_CMD: if (cmd_end & cmd_flwrite & fl_ph_wren) qspi_machine = `QS_CETRT;
+				 else if (cmd_end & cmd_flwrite & fl_ph_prog) qspi_machine = `QS_SADR;
+				 else if (cmd_end & cmd_flwrite) qspi_machine = `QS_SRDST;
+				 else if (cmd_end & (cmd_freadq | cmd_qwrite)) qspi_machine = `QS_ADR;
 				 else if (cmd_end & cmd_rst_en) qspi_machine = `QS_RSTEN;
 				 else qspi_machine = `QS_CMD;
 		`QS_ADR: if (adr_end & cmd_freadq) qspi_machine = `QS_RDWIT;
@@ -274,6 +300,13 @@ begin
 		`QS_RDDAT: if (read_data_end & dbg_2div_read_half_end) qspi_machine = `QS_WWAIT;
 		           else if (read_data_end & ~dbg_2div_read_half_end) qspi_machine = `QS_CETRT;
 				   else qspi_machine = `QS_RDDAT;
+		`QS_SADR: if (sadr_end & fl_erase) qspi_machine = `QS_CETRT;
+				  else if (sadr_end) qspi_machine = `QS_SWDAT;
+				  else qspi_machine = `QS_SADR;
+		`QS_SWDAT: if (swdata_end) qspi_machine = `QS_CETRT;
+				   else qspi_machine = `QS_SWDAT;
+		`QS_SRDST: if (srdst_end) qspi_machine = `QS_CETRT;
+				   else qspi_machine = `QS_SRDST;
 		`QS_WWAIT: qspi_machine = `QS_CETRT;
 		`QS_CETRT: if (dbg_2div_trt) qspi_machine = `QS_FWIT1;
 				   else qspi_machine = `QS_IDLE;
@@ -300,7 +333,14 @@ wire [3:0] next_qspi_state = qspi_machine( qspi_state,
 										   write_data_end,
 										   dbg_2div_wirte_half_end,
 										   dbg_2div_read_half_end,
-										   dbg_2div_trt);
+										   dbg_2div_trt,
+										   cmd_flwrite,
+										   fl_erase,
+										   fl_ph_wren,
+										   fl_ph_prog,
+										   sadr_end,
+										   swdata_end,
+										   srdst_end);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n) begin
@@ -327,6 +367,12 @@ wire state_rsten = (qspi_state == `QS_RSTEN);
 wire next_state_rsten = (next_qspi_state == `QS_RSTEN);
 wire state_rst = (qspi_state == `QS_RESET);
 wire next_state_rst = (next_qspi_state == `QS_RESET);
+wire state_sadr = (qspi_state == `QS_SADR);
+wire next_state_sadr = (next_qspi_state == `QS_SADR);
+wire state_swdat = (qspi_state == `QS_SWDAT);
+wire next_state_swdat = (next_qspi_state == `QS_SWDAT);
+wire state_srdst = (qspi_state == `QS_SRDST);
+wire next_state_srdst = (next_qspi_state == `QS_SRDST);
 
 wire dbg_reg_2div_cec_read;
 wire dbg_reg_2div_cec_write;
@@ -408,7 +454,11 @@ wire [7:0] cmd_read_sel =  (~ce_2_en) ? cmd_read_ce_n2 :
 wire [7:0] cmd_write_sel =  (~ce_2_en) ? cmd_write_ce_n2 :
                             (~ce_1_en) ? cmd_write_ce_n1 : cmd_write_ce_n0;
 
-assign cmd_byte = (cmd_freadq) ? cmd_read_sel :
+wire [7:0] cmd_flash = fl_ph_wren ? `CMD_FL_WREN :
+                       fl_ph_prog ? (fl_erase ? `CMD_FL_SE : `CMD_FL_PP) : `CMD_FL_RDSR;
+
+assign cmd_byte = (cmd_flwrite) ? cmd_flash :
+                  (cmd_freadq) ? cmd_read_sel :
                   (cmd_qwrite) ? cmd_write_sel :
                   (cmd_rsten) ? `CMD_RST_EN : `CMD_RESET;
 
@@ -477,16 +527,126 @@ assign wdata_slice = (wdata_ofs == 3'd1) ? ext_wdata[31:28] :
 
 assign write_data_end = state_write & (wdata_ofs == 3'b0) & fall_edge;
 
+// flash serial write sequence
+//   WREN(06h) -> CE high -> PP(02h)/SE(20h) + 24bit adr (+ data) -> CE high
+//   -> RDSR(05h) polling until WIP/WEL clear -> write_finish
+//   all phases are 1 bit / SCK on SIO0, status is read from SIO1
+`define FL_WREN 2'd0
+`define FL_PROG 2'd1
+`define FL_RDSR 2'd2
+
+reg [1:0] fl_phase;
+
+// advance at the end of each phase (not at CETRT : the next request may start there)
+wire fl_phase_end = (cmd_end & fl_ph_wren) | (sadr_end & fl_erase) | swdata_end;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		fl_phase <= `FL_WREN;
+	else if (~cmd_flwrite)
+		fl_phase <= `FL_WREN;
+	else if (fl_phase_end & fall_edge)
+		fl_phase <= fl_phase + 2'd1;
+end
+
+assign fl_ph_wren = (fl_phase == `FL_WREN);
+assign fl_ph_prog = (fl_phase == `FL_PROG);
+
+// serial adr slicer
+reg [4:0] sadr_ofs;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		sadr_ofs <= 5'd0;
+	else if (~state_sadr)
+		sadr_ofs <= 5'd23;
+	else if ( state_sadr & fall_edge)
+		sadr_ofs <= sadr_ofs - 5'd1;
+end
+
+wire sadr_bit = adr_rw[sadr_ofs];
+
+assign sadr_end = state_sadr & (sadr_ofs == 5'd0);
+
+// serial write data slicer : byte0 first, msb first
+reg [4:0] swdata_ofs;
+
+wire [4:0] swrite_length = word_w ? 5'd31 :
+                           word_hw ? 5'd15 : 5'd7;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		swdata_ofs <= 5'd0;
+	else if (~state_swdat)
+		swdata_ofs <= swrite_length;
+	else if ( state_swdat & fall_edge)
+		swdata_ofs <= swdata_ofs - 5'd1;
+end
+
+wire [31:0] ext_swdata = word_w ? { wdata[7:0], wdata[15:8], wdata[23:16], wdata[31:24] } :
+                         word_hw ? { 16'd0, wdata[7:0], wdata[15:8] } : { 24'd0, wdata[7:0] };
+
+wire swdata_bit = ext_swdata[swdata_ofs];
+
+assign swdata_end = state_swdat & (swdata_ofs == 5'd0);
+
+// status register polling
+//   same sampling convention as read data : the 1st rise edge in the state is
+//   dropped, then every 8 rise edges make one status byte (flash repeats it)
+reg [3:0] srd_cntr;
+reg [7:0] srd_shift;
+reg [7:0] fl_status;
+reg fl_ready;
+
+wire [7:0] srd_shift_nxt = { srd_shift[6:0], sio_in_sync[1] };
+wire srd_frame = state_srdst & (srd_cntr == 4'd0) & rise_edge;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n) begin
+		srd_cntr <= 4'd0;
+		srd_shift <= 8'd0;
+	end
+	else if (~state_srdst) begin
+		srd_cntr <= 4'd8;
+	end
+	else if (state_srdst & rise_edge) begin
+		srd_cntr <= (srd_cntr == 4'd0) ? 4'd7 : srd_cntr - 4'd1;
+		srd_shift <= srd_shift_nxt;
+	end
+end
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n) begin
+		fl_status <= 8'd0;
+		fl_ready <= 1'b0;
+	end
+	else if (~state_srdst) begin
+		fl_ready <= 1'b0;
+	end
+	else if (srd_frame) begin
+		fl_status <= srd_shift_nxt;
+		fl_ready <= (srd_shift_nxt[1:0] == 2'b00);
+	end
+end
+
+assign srdst_end = state_srdst & fl_ready;
+wire fl_write_end = srdst_end & fall_edge;
+
 // for Flash's mode bit term : for issi : need to check for winbond
 wire mode_bit_window = state_rdwt & (rwait_cntr >= read_latency - 4'd1);
 
 // final selector
-wire [3:0] sio_out_pre = (next_state_cmd | state_cmd) ? { 3'b000, cmd_bit } :
+// flash serial phases keep WP#/HOLD# (SIO2/SIO3) high
+wire [3:0] sio_out_pre = (cmd_flwrite & (next_state_cmd | state_cmd)) ? { 3'b110, cmd_bit } :
+                         (next_state_cmd | state_cmd) ? { 3'b000, cmd_bit } :
+                         (state_sadr) ? { 3'b110, sadr_bit } :
+                         (state_swdat) ? { 3'b110, swdata_bit } :
                          (state_adr) ? adr_slice :
                          (state_write) ? wdata_slice :
                          (mode_bit_window) ? 4'h0 : 4'd0;
 
-wire sio_out_enbl_pre = next_state_cmd | next_state_adr | state_adr | next_state_write | mode_bit_window;
+wire sio_out_enbl_pre = next_state_cmd | next_state_adr | state_adr | next_state_write | mode_bit_window
+                      | (cmd_flwrite & state_cmd) | next_state_sadr | state_sadr | next_state_swdat | state_swdat;
 
 reg [3:0] sio_out_dly;
 reg sio_out_enbl_dly;
@@ -550,6 +710,7 @@ assign rst_end = (state_rsten | state_rst) & (rst_cntr == 4'd0) & fall_edge;
 `define SYS_QSPI_WRCMD1   14'h3D07
 `define SYS_QSPI_RDWTCH   14'h3D08
 `define SYS_QSPI_RDEDGE   14'h3D09
+`define SYS_QSPI_FLWRITE  14'h3D0A
 
 wire we_qspi_latency0 = dma_io_we      & (dma_io_wadr == `SYS_QSPI_LATENCY0);
 wire re_qspi_latency0 = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_LATENCY0);
@@ -572,6 +733,8 @@ wire we_qspi_rdwrch = dma_io_we      & (dma_io_wadr == `SYS_QSPI_RDWTCH);
 wire re_qspi_rdwrch = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_RDWTCH);
 wire we_qspi_rdedge = dma_io_we      & (dma_io_wadr == `SYS_QSPI_RDEDGE);
 wire re_qspi_rdedge = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_RDEDGE);
+wire we_qspi_flwrite = dma_io_we      & (dma_io_wadr == `SYS_QSPI_FLWRITE);
+wire re_qspi_flwrite = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_FLWRITE);
 
 
 reg [3:0] read_latency_0;
@@ -703,13 +866,32 @@ always @ (posedge clk or negedge rst_n) begin
 	end
 end
 
-reg [9:0] re_qspi_latency_dly;
+// flash serial write mode
+//   [2:0] : enable for ce_n[2:0]  1: writes become WREN + PP/SE + RDSR polling
+//   [4]   : 1: sector erase (4KB, 20h) instead of page program (write data ignored)
+reg [2:0] flwr_en;
+reg flwr_erase;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n) begin
+		 flwr_en <= 3'd0;
+		 flwr_erase <= 1'b0;
+	end
+	else if (we_qspi_flwrite) begin
+		 flwr_en <= dma_io_wdata[2:0];
+		 flwr_erase <= dma_io_wdata[4];
+	end
+end
+
+assign fl_erase = flwr_erase;
+
+reg [10:0] re_qspi_latency_dly;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
-		 re_qspi_latency_dly <= 10'd0;
+		 re_qspi_latency_dly <= 11'd0;
 	else
-		 re_qspi_latency_dly <= { re_qspi_rdedge, re_qspi_rdwrch, re_qspi_wrcmd1, re_qspi_wrcmd0, re_qspi_rdcmd1, re_qspi_rdcmd0,
+		 re_qspi_latency_dly <= { re_qspi_flwrite, re_qspi_rdedge, re_qspi_rdwrch, re_qspi_wrcmd1, re_qspi_wrcmd0, re_qspi_rdcmd1, re_qspi_rdcmd0,
                                   re_qspi_sckdiv, re_qspi_latency2, re_qspi_latency1, re_qspi_latency0 };
 end
 
@@ -722,7 +904,8 @@ assign dma_io_rdata = (re_qspi_latency_dly[0] == 1'b1) ? { 28'd0, read_latency_0
                       (re_qspi_latency_dly[6] == 1'b1) ? { 24'd0, wrcmd0 } :
                       (re_qspi_latency_dly[7] == 1'b1) ? { 24'd0, wrcmd1 } :
                       (re_qspi_latency_dly[8] == 1'b1) ? { 26'd0, rdwrch } :
-                      (re_qspi_latency_dly[9] == 1'b1) ? { 25'd0, wredge, 1'b0, rdedge } : dma_io_rdata_in;
+                      (re_qspi_latency_dly[9] == 1'b1) ? { 25'd0, wredge, 1'b0, rdedge } :
+                      (re_qspi_latency_dly[10] == 1'b1) ? { 16'd0, fl_status, 3'd0, flwr_erase, 1'b0, flwr_en } : dma_io_rdata_in;
 
 wire [3:0] read_latency = ce_1_dec ? read_latency_1 :
                           ce_2_dec ? read_latency_2 : read_latency_0;
@@ -806,7 +989,7 @@ wire [1:0] next_inner_state = inner_machine( inner_state,
 											   qspi_read_req,
 											   qspi_write_req,
 											   read_data_end,
-											   write_data_end);
+											   write_data_end | fl_write_end);
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
@@ -816,9 +999,13 @@ always @ (posedge clk or negedge rst_n) begin
 end
 
 assign cmd_freadq = (inner_state == `IN_READ);
-assign cmd_qwrite = (inner_state == `IN_WRITE);
+wire fl_sel = (word_adr[25:24] == 2'd0) ? flwr_en[0] :
+              (word_adr[25:24] == 2'd1) ? flwr_en[1] :
+              (word_adr[25:24] == 2'd2) ? flwr_en[2] : 1'b0;
+assign cmd_flwrite = (inner_state == `IN_WRITE) & fl_sel;
+assign cmd_qwrite = (inner_state == `IN_WRITE) & ~fl_sel;
 wire qspi_read_valid = read_data_end & fall_edge;
-wire qspi_write_finish = write_data_end;
+wire qspi_write_finish = write_data_end | fl_write_end;
 
 // input signal sampler
 
