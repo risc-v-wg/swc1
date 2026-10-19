@@ -26,7 +26,7 @@ module fpga_top (
 `else // FPGA_MODE
 	input [3:0] sio_i,
 	output [3:0] sio_o,
-	output sio_en,
+	output [3:0] sio_en,
 `endif // FPGA_MODE
 
 	input rx,

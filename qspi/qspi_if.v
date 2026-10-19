@@ -20,7 +20,7 @@ module qspi_if (
 `else // FPGA_MODE
 	input [3:0] sio_i,
 	output [3:0] sio_o,
-	output sio_en,
+	output [3:0] sio_en,
 `endif // FPGA_MODE
 
 	output [2:0] dbg_bpoint_en,
@@ -84,12 +84,15 @@ reg word_hw;
 reg [25:0] word_adr;
 
 // tristate buffer of sio
-reg sio_out_enbl;
+reg [3:0] sio_out_enbl;
 reg [3:0] sio_out;
 wire [3:0] sio_in;
 
 `ifdef FPGA_MODE
-assign sio = sio_out_enbl ? sio_out : 4'hz;
+assign sio[0] = sio_out_enbl[0] ? sio_out[0] : 1'bz;
+assign sio[1] = sio_out_enbl[1] ? sio_out[1] : 1'bz;
+assign sio[2] = sio_out_enbl[2] ? sio_out[2] : 1'bz;
+assign sio[3] = sio_out_enbl[3] ? sio_out[3] : 1'bz;
 assign sio_in = sio;
 
 `else // FPGA_MODE
@@ -632,8 +635,9 @@ end
 assign srdst_end = state_srdst & fl_ready;
 wire fl_write_end = srdst_end & fall_edge;
 
-// for Flash's mode bit term : for issi : need to check for winbond
+// for Flash's mode bit term : issi needs all 0, winbond needs all 1
 wire mode_bit_window = state_rdwt & (rwait_cntr >= read_latency - 4'd1);
+wire [3:0] mode_bit_value;
 
 // final selector
 // flash serial phases keep WP#/HOLD# (SIO2/SIO3) high
@@ -643,25 +647,28 @@ wire [3:0] sio_out_pre = (cmd_flwrite & (next_state_cmd | state_cmd)) ? { 3'b110
                          (state_swdat) ? { 3'b110, swdata_bit } :
                          (state_adr) ? adr_slice :
                          (state_write) ? wdata_slice :
-                         (mode_bit_window) ? 4'h0 : 4'd0;
+                         (mode_bit_window) ? mode_bit_value : 4'd0;
 
 wire sio_out_enbl_pre = next_state_cmd | next_state_adr | state_adr | next_state_write | mode_bit_window
                       | (cmd_flwrite & state_cmd) | next_state_sadr | state_sadr | next_state_swdat | state_swdat;
 
+// flash serial write mode : SIO1 is input (flash may drive SO), SIO2/SIO3 are kept driven
+wire [3:0] sio_out_enbl_vec = { sio_out_enbl_pre, sio_out_enbl_pre, sio_out_enbl_pre & ~cmd_flwrite, sio_out_enbl_pre };
+
 reg [3:0] sio_out_dly;
-reg sio_out_enbl_dly;
+reg [3:0] sio_out_enbl_dly;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n) begin
 		sio_out <= 4'd0;
 		sio_out_dly <= 4'd0;
-		sio_out_enbl <= 1'b0;
-		sio_out_enbl_dly <= 1'b0;
+		sio_out_enbl <= 4'd0;
+		sio_out_enbl_dly <= 4'd0;
 	end
 	else begin
 		sio_out_dly <= sio_out_pre;
 		sio_out <= sio_out_dly;
-		sio_out_enbl_dly <= sio_out_enbl_pre;
+		sio_out_enbl_dly <= sio_out_enbl_vec;
 		sio_out_enbl <= sio_out_enbl_dly;
 	end
 end
@@ -711,6 +718,7 @@ assign rst_end = (state_rsten | state_rst) & (rst_cntr == 4'd0) & fall_edge;
 `define SYS_QSPI_RDWTCH   14'h3D08
 `define SYS_QSPI_RDEDGE   14'h3D09
 `define SYS_QSPI_FLWRITE  14'h3D0A
+`define SYS_QSPI_MODEBIT  14'h3D0B
 
 wire we_qspi_latency0 = dma_io_we      & (dma_io_wadr == `SYS_QSPI_LATENCY0);
 wire re_qspi_latency0 = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_LATENCY0);
@@ -735,6 +743,8 @@ wire we_qspi_rdedge = dma_io_we      & (dma_io_wadr == `SYS_QSPI_RDEDGE);
 wire re_qspi_rdedge = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_RDEDGE);
 wire we_qspi_flwrite = dma_io_we      & (dma_io_wadr == `SYS_QSPI_FLWRITE);
 wire re_qspi_flwrite = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_FLWRITE);
+wire we_qspi_modebit = dma_io_we      & (dma_io_wadr == `SYS_QSPI_MODEBIT);
+wire re_qspi_modebit = dma_io_radr_en & (dma_io_radr == `SYS_QSPI_MODEBIT);
 
 
 reg [3:0] read_latency_0;
@@ -885,13 +895,27 @@ end
 
 assign fl_erase = flwr_erase;
 
-reg [10:0] re_qspi_latency_dly;
+// read mode bit value : driven for 1 cycle after the address
+//   [3:0] : for ce_n[0]  [7:4] : for ce_n[1]  [11:8] : for ce_n[2]
+reg [11:0] modebit;
 
 always @ (posedge clk or negedge rst_n) begin
 	if (~rst_n)
-		 re_qspi_latency_dly <= 11'd0;
+		 modebit <= 12'd0;
+	else if (we_qspi_modebit)
+		 modebit <= dma_io_wdata[11:0];
+end
+
+assign mode_bit_value = ce_1_dec ? modebit[7:4] :
+                        ce_2_dec ? modebit[11:8] : modebit[3:0];
+
+reg [11:0] re_qspi_latency_dly;
+
+always @ (posedge clk or negedge rst_n) begin
+	if (~rst_n)
+		 re_qspi_latency_dly <= 12'd0;
 	else
-		 re_qspi_latency_dly <= { re_qspi_flwrite, re_qspi_rdedge, re_qspi_rdwrch, re_qspi_wrcmd1, re_qspi_wrcmd0, re_qspi_rdcmd1, re_qspi_rdcmd0,
+		 re_qspi_latency_dly <= { re_qspi_modebit, re_qspi_flwrite, re_qspi_rdedge, re_qspi_rdwrch, re_qspi_wrcmd1, re_qspi_wrcmd0, re_qspi_rdcmd1, re_qspi_rdcmd0,
                                   re_qspi_sckdiv, re_qspi_latency2, re_qspi_latency1, re_qspi_latency0 };
 end
 
@@ -905,7 +929,8 @@ assign dma_io_rdata = (re_qspi_latency_dly[0] == 1'b1) ? { 28'd0, read_latency_0
                       (re_qspi_latency_dly[7] == 1'b1) ? { 24'd0, wrcmd1 } :
                       (re_qspi_latency_dly[8] == 1'b1) ? { 26'd0, rdwrch } :
                       (re_qspi_latency_dly[9] == 1'b1) ? { 25'd0, wredge, 1'b0, rdedge } :
-                      (re_qspi_latency_dly[10] == 1'b1) ? { 16'd0, fl_status, 3'd0, flwr_erase, 1'b0, flwr_en } : dma_io_rdata_in;
+                      (re_qspi_latency_dly[10] == 1'b1) ? { 16'd0, fl_status, 3'd0, flwr_erase, 1'b0, flwr_en } :
+                      (re_qspi_latency_dly[11] == 1'b1) ? { 20'd0, modebit } : dma_io_rdata_in;
 
 wire [3:0] read_latency = ce_1_dec ? read_latency_1 :
                           ce_2_dec ? read_latency_2 : read_latency_0;
