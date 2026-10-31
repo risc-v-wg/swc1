@@ -111,9 +111,11 @@ assign rx_fifo_rst = we_uart_rxch & dma_io_wdata[16];
 
 
 // for fpga *** please comment out for tiny tapeout ***
-
+//
+// clk:48MHz, 9600bps
+`define U2TERM_1 16'd5000
 // clk 50MHz, 9600bps
-`define U2TERM_1 16'd5208
+//`define U2TERM_1 16'd5208
 // clk 50MHz, 921600bps
 //`define U2TERM_1 16'd54
 // test1 6MHz 38400bps

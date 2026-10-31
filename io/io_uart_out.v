@@ -87,9 +87,9 @@ end
 // clk 50MHz, 115200bps
 `define TERM_0 16'd434
 // clk 48MHz, 115200bps
-//`define TERM_1 16'd417
+`define TERM_1 16'd417
 // clk 50MHz, 921600bps
-`define TERM_1 16'd54
+//`define TERM_1 16'd54
 // test1 6MHz 38400bps
 //`define TERM_1 16'd156
 // test2 5MHz 19200bps
@@ -109,9 +109,13 @@ end
 // test10 13MHz 576000bps
 //`define TERM_1 16'd226
 // clk:50MHz, 9600bps
-`define TERM_2 16'd5208
+//`define TERM_2 16'd5208
 // clk:48MHz, 9600bps
-`define TERM_3 16'd5000
+//`define TERM_3 16'd5000
+// clk 40MHz, 115200bps
+`define TERM_2 16'd347
+// clk 54MHz, 115200bps
+`define TERM_3 16'd469
 	
 wire [15:0] uart_term_reset_value = (init_uart == 2'd0) ? `TERM_0 :
                                     (init_uart == 2'd1) ? `TERM_1 :
