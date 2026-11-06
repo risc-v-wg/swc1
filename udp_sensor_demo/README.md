@@ -22,7 +22,12 @@ git -C lwip checkout 3d896ba0a37ff3ce73270ca5e230707fe47f60e3   # STABLE-2_2_1_R
 
 既存のチェックアウトを使うならシンボリックリンクでもよい。別の場所に置く場合は
 `make -f Makefile.swc1_ether LWIPDIR=/path/to/lwip/src` のように指定する (micro T-Kernel の場所は `SRCDIR` だが Makefile で固定)。
-リンカスクリプト (`mtkernel_3_for_swc1/etc/linker/iote_swc1/tkernel_map*.ld`) も micro T-Kernel 側にある。
+リンカスクリプトは、RAM 版 (`Makefile.swc1_ether`) は micro T-Kernel 側の
+`mtkernel_3_for_swc1/etc/linker/iote_swc1/tkernel_map.ld` を使う。
+フラッシュ版 (`Makefile.swc1_ether_flash`) はこのディレクトリの `linker/tkernel_map_flash.ld` を使う。
+これは micro T-Kernel 側の `tkernel_map_flash.ld` に、`.sdata` / `.srodata` を `.data` のコピー範囲
+(FLASH → PSRAM) に含める修正を加えたもの。元のスクリプトでは gp 相対の初期化済みグローバル変数が
+PSRAM にコピーされず、不定値のまま起動してしまう。`../demo/udp_loop_demo` (2026-11-06) と同じ修正。
 2026-10-10 時点で udp_loop_demo 内の submodule を使ってビルドし、元と同じイメージになることを確認した。
 
 ## 構成

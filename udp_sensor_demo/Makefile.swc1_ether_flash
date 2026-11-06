@@ -21,7 +21,12 @@
 
 EXE        := mtkernel_swc1_ether_flash
 BUILDDIR   := build_swc1_ether_flash
-LDSCRIPT   := mtkernel_3_for_swc1/etc/linker/iote_swc1/tkernel_map_flash.ld
+# Local copy of mtkernel_3_for_swc1/etc/linker/iote_swc1/tkernel_map_flash.ld
+# with .sdata/.srodata placed inside the FLASH->RAM .data copy range (the
+# upstream script leaves them as orphans, so gp-relative initialised globals
+# are never copied to PSRAM and start up with garbage). Same fix as
+# ../demo/udp_loop_demo's mtkernel_3_for_swc1 (2026-11-06).
+LDSCRIPT   := linker/tkernel_map_flash.ld
 
 # Tells sysdef.h to point RAM_START/RAM_SIZE (hence knl_lowmem_top/limit,
 # the Imalloc heap bounds) at the RAM region (0x01000000+), matching
