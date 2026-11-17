@@ -21,6 +21,7 @@ module csr_array(
 	output [31:0] csr_rd_data,
 	output [31:2] csr_mtvec_ex,
 	input interrupts_in_pc_state,
+	input int_ext_in_pc_state,
 	input cpu_stat_pc,
 	input g_interrupt,
 	input g_interrupt_1shot,
@@ -43,9 +44,6 @@ module csr_array(
 	input cmd_ebreak_ex,
 	input [31:2] pc_ebreak,
 	input [31:2] pc_excep,
-	input [31:2] pc_excep2,
-	output [31:2] pc_csr_mtvec,
-	input pc_int_ecall_syn_end,
 	//input [31:2] pc_dbg,
 	input cpu_stat_ex,
 	input cpu_stat_before_exec,
@@ -173,13 +171,15 @@ reg csr_spp;
 //wire m_interrupt = (g_interrupt_1shot | frc_cntr_val_leq_1shot) & (g_interrupt_priv == `M_MODE) & csr_rmie;
 //wire m_interrupt = interrupts_in_pc_state & (g_interrupt_priv == `M_MODE) & csr_rmie | g_exception | cmd_ecall_ex | cmd_ebreak_ex;
 // interrupts_in_pc_state already includes csr_rmie. ecall/ebreak are taken even when MIE=0.
-wire m_interrupt =  (interrupts_in_pc_state & (g_interrupt_priv == `M_MODE) | cmd_ecall_ex | cmd_ebreak_ex ) & cpu_stat_pc | g_exception;
+// illegal_ops (g_exception) is decoded from inst and stays high from IMR until the next
+// instruction is latched, so it must be sampled only in the PC state like ecall/ebreak.
+wire g_exception_pc = g_exception & cpu_stat_pc;
+wire m_interrupt =  (interrupts_in_pc_state & (g_interrupt_priv == `M_MODE) | cmd_ecall_ex | cmd_ebreak_ex | g_exception ) & cpu_stat_pc;
 wire mret_on_stat_pc = cmd_mret_ex & cpu_stat_pc;
 wire rmie_wr = m_interrupt | mret_on_stat_pc;
 //wire rmie_value = m_interrupt ? 1'b0 :
                   //mret_on_stat_pc ? csr_mpie : csr_rmie;
-wire rmie_value = pc_int_ecall_syn_end ? 1'b0 :
-                  mret_on_stat_pc ? csr_mpie :
+wire rmie_value = mret_on_stat_pc ? csr_mpie :
                   m_interrupt ? 1'b0 : csr_rmie;
 
 always @ ( posedge clk or negedge rst_n) begin 
@@ -217,8 +217,7 @@ end
 
 // MPIE[7] : Machine mode Previouse Interrupt Enable
 wire mpie_wr = m_interrupt | mret_on_stat_pc;
-wire mpie_value = pc_int_ecall_syn_end ? csr_mpie :
-                  m_interrupt ? csr_rmie :
+wire mpie_value = m_interrupt ? csr_rmie :
                   mret_on_stat_pc ? 1'b1 : csr_mpie;
 
 always @ ( posedge clk or negedge rst_n) begin 
@@ -238,8 +237,7 @@ end
 
 // MPP[12:11] : Machine mode Previouse Privilege
 wire mpp_wr = m_interrupt | mret_on_stat_pc;
-wire [1:0] mpp_value = pc_int_ecall_syn_end ? csr_mpp :
-                       m_interrupt ? g_current_priv :
+wire [1:0] mpp_value = m_interrupt ? g_current_priv :
                        mret_on_stat_pc ? `M_MODE : // currently only M_MODE support
                        csr_mpp;
 
@@ -353,7 +351,6 @@ end
 
 assign csr_mtvec_ex = (csr_mtvec[1:0] == 2'd0) ? csr_mtvec[31:2] : csr_mtvec[31:2] + { 24'd0, mcause_code[5:0] };
 
-assign pc_csr_mtvec = csr_mtvec[31:2];
 
 // mscrach
 // scrach register for m-mode
@@ -402,9 +399,6 @@ always @ ( posedge clk or negedge rst_n) begin
 		csr_mepc <= 30'd0;
 	end
 	//else if ((cmd_ecall_ex | cmd_ebreak_ex | m_interrupt_latch_timing) & csr_rmie_dly | g_exception) begin
-	else if ( pc_int_ecall_syn_end ) begin
-		csr_mepc <= pc_excep2;
-	end
 	else if ( m_interrupt ) begin
 		csr_mepc <= pc_excep;
 	end
@@ -420,9 +414,10 @@ assign csr_mepc_ex = csr_mepc[31:2];
 
 // mcause
 // conditions
-// a masked (MIE=0) timer interrupt must not affect the cause of a synchronous exception
-wire frc_pending_m = frc_cntr_val_leq & csr_rmie;
-wire interrupt_bit = g_interrupt | frc_pending_m;
+// interrupt cause is decided by the interrupt actually taken (latched one in PC state),
+// not by the level of g_interrupt/frc_cntr_val_leq.
+// When an interrupt is taken, ecall/ebreak/illegal are re-executed after mret.
+wire interrupt_bit = interrupts_in_pc_state;
 // just impliment Machine mode Ecall and inteeupt
 //assign mcause_code = illegal_ops_ex ? 6'd2 :
                      //cmd_ebreak_ex ?  6'd3 :
@@ -430,8 +425,8 @@ wire interrupt_bit = g_interrupt | frc_pending_m;
                      //frc_cntr_val_leq ? 6'd7 :
                      //cmd_ecall_ex ?  6'd11 : 6'h3f;
 
-assign mcause_code = g_interrupt ? 6'd11 :
-                     frc_pending_m ? 6'd7 :
+assign mcause_code = int_ext_in_pc_state ? 6'd11 :
+                     interrupts_in_pc_state ? 6'd7 :
                      cmd_ecall_ex ?  6'd11 :
                      cmd_ebreak_ex ?  6'd3 :
                      illegal_ops_ex ? 6'd2 : 6'h3f;
@@ -441,13 +436,13 @@ assign mcause_code = g_interrupt ? 6'd11 :
 //wire [31:0] sel_tval = illegal_ops_ex ? illegal_ops_inst :
                        //cmd_ebreak_ex ? { pc_ebreak, 2'd0 } :
                        //(g_interrupt | frc_cntr_val_leq) ? 32'd0 : 32'd0; 
-wire [31:0] sel_tval = (g_interrupt | frc_pending_m) ? 32'd0 :
+wire [31:0] sel_tval = interrupts_in_pc_state ? 32'd0 :
                        cmd_ebreak_ex ? { pc_ebreak, 2'd0 } :
                        illegal_ops_ex ? illegal_ops_inst : 32'd0; 
 
 //wire mcause_write = cmd_ecall_ex | g_interrupt_1shot | g_exception | frc_cntr_val_leq_1shot | illegal_ops_ex;
 //wire mcause_write = cmd_ecall_ex | g_exception | (interrupts_in_pc_state & csr_rmie) | illegal_ops_ex;
-wire mcause_write = cmd_ecall_ex | cmd_ebreak_ex | interrupts_in_pc_state | g_exception;
+wire mcause_write = cmd_ecall_ex | cmd_ebreak_ex | interrupts_in_pc_state | g_exception_pc;
 
 always @ ( posedge clk or negedge rst_n) begin   
 	if (~rst_n) begin

@@ -24,6 +24,7 @@ module pc_stage (
 	output cmd_ecall_pc,
 	output cmd_ebreak_pc,
 	output interrupts_in_pc_state,
+	output int_ext_in_pc_state,
 	input jmp_condition_ex,
 	input cmd_ecall_ex,
 	input cmd_ebreak_ex,
@@ -37,9 +38,6 @@ module pc_stage (
 	input [31:2] jmp_adr_ex,
 	output reg [31:2] pc,
 	output [31:2] pc_excep,
-    output reg [31:2] pc_excep2,
-    input [31:2] pc_csr_mtvec,
-    output pc_int_ecall_syn_end,
 	//output [31:2] pc_dbg,
 	output [31:2] pc_ebreak
 	);
@@ -58,12 +56,12 @@ wire frc_cntr_val_leq_1shot;
 reg frc_cntr_val_leq_latch;
 
 assign interrupts_in_pc_state = (g_interrupt_latch | frc_cntr_val_leq_latch) & csr_rmie & cpu_stat_pc;
+// external interrupt is the one taken (priority MEI > MTI) : used for mcause code
+assign int_ext_in_pc_state = g_interrupt_latch & csr_rmie & cpu_stat_pc;
 
 //wire interrupt_mskd = (g_interrupt_latch  | g_exception | frc_cntr_val_leq_latch) & csr_rmie;
 wire interrupt_mskd = (g_interrupt_latch  | frc_cntr_val_leq_latch) & csr_rmie | g_exception;
 wire intr_ecall_exception = ecall_condition_ex | interrupt_mskd;
-// pending interrupt seen by ecall/exception logic : masked by MIE
-wire int_pending_m = (g_interrupt | frc_cntr_val_leq) & csr_rmie;
 
 wire jump_cmd_cond = jmp_condition_ex | cmd_mret_ex; // | cmd_sret_ex | cmd_uret_ex;
 
@@ -149,29 +147,12 @@ end
 //assign pc_excep = (g_exception) ? pc :
                   //(jmp_condition_ex) ? jmp_adr_ex : pc_p1;
 
-assign pc_excep = (ecall_condition_ex & int_pending_m) ? pc_csr_mtvec :
-                  (ecall_condition_ex & ~int_pending_m) ? pc :
+// ecall/ebreak/illegal : mepc = the instruction itself.
+// When an interrupt is taken at the same time, the ecall/ebreak/illegal trap is
+// suppressed (cmd_ecall_pc/cmd_ebreak_pc are masked by interrupts_in_pc_state),
+// so mepc = the instruction itself makes it re-executed after mret and then trapped.
+assign pc_excep = (ecall_condition_ex) ? pc :
                   (jmp_condition_ex) ? jmp_adr_ex : pc_p1;
-
-always @ (posedge clk or negedge rst_n) begin
-	if (~rst_n)
-		pc_excep2 <= 30'd0;
-	else if (ecall_condition_ex & int_pending_m)
-		pc_excep2 <= pc;
-end
-
-reg pc_int_ecall_syn_state;
-
-always @ (posedge clk or negedge rst_n) begin
-	if (~rst_n)
-		pc_int_ecall_syn_state <= 1'b0;
-	else if (ecall_condition_ex & int_pending_m)
-		pc_int_ecall_syn_state <= 1'b1;
-	else if (cmd_mret_ex & cpu_stat_pc)
-		pc_int_ecall_syn_state <= 1'b0;
-end
-
-assign pc_int_ecall_syn_end = pc_int_ecall_syn_state & cmd_mret_ex & cpu_stat_pc;
 
 //ebreak : current pc
 assign pc_ebreak = pc;
